@@ -59,8 +59,8 @@ streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
 
-Latest verification: all 111 tests passed on both Python 3.9.13 (93.263 seconds,
-LiteLLM 1.80.17) and Python 3.13.7 (93.552 seconds, LiteLLM 1.100.0). Both SDK
+Latest verification: all 125 tests passed on both Python 3.9.13 (90.655 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (86.721 seconds, LiteLLM 1.100.0). Both SDK
 versions passed the actual SDK/mock SSE test. These results cover the installed
 interpreters; Python 3.9.25 was not separately executed. The test outputs are
 `test-results-python39.txt` and `test-results-python313.txt`.
@@ -201,10 +201,39 @@ empty selection; existing directories are never implicitly enabled. New Projects
 saved `fake` engine selections must be changed explicitly before real execution.
 The deterministic fake engine now exists only in `tests/support/fake_engine.py`.
 
-Use one RunManager per workspace, in one process and event loop. Shutdown the
-manager before cloning, deleting, or restoring its Tasks/Projects. Metadata
-writes and conversation appends flush synchronously; high-volume persistence
-optimization and cross-process locking remain future work.
+Use one shared ProjectRepository/service container per workspace and one event
+loop for its RunManager. Manager calls automatically acquire an OS lock at
+`<projects-root>/.ish.lock`. Attached Tasks retain it until `await manager.shutdown()`
+has drained execution/storage, including when idle. A competing repository
+instance/process raises `ish.services.locking.WorkspaceBusyError` before recovery
+or mutation. Process exit releases ownership. Never delete the lock file to bypass
+ownership. Different workspace roots are independent.
+
+Shutdown affected runtimes before cloning, deleting, or restoring Tasks/Projects.
+RunManager performs ordered disk work in background threads and caches incremental
+conversation replay. QUEUED and streaming deltas still fsync before scheduling or
+notification. Cancellation waits for in-flight writes; a cancelled `submit` can
+still accept and schedule a request, so do not blindly retry. Per-delta operational
+logging is omitted; the delta remains in conversation JSONL.
+
+Project/Task CRUD methods are synchronous. From an async UI, offload them through
+the ownership-aware adapter:
+
+```python
+from ish.services.io import StorageIO
+
+storage = StorageIO(projects.ownership)
+project = await storage.run(projects.create, "My project")
+task = await storage.run(tasks.create, project, "My task")
+await manager.submit(project, task, "Hello")
+```
+
+Injected synchronous storage/context/capability adapters run on worker threads
+and must not require a running event loop. Engines and UI callbacks remain on
+the event loop. Direct lower-level repository/component or ConversationStore
+writes need `with projects.ownership.scope():`; manager APIs already supply it.
+Locks coordinate local service processes; network filesystems and arbitrary
+external writers are outside this contract. See architecture/production docs.
 
 Task clones copy configuration and conversation snapshots with fresh IDs.
 Cloned queued inputs become cancelled, Run links are cleared, and execution

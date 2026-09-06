@@ -2,11 +2,13 @@
 
 from typing import Protocol
 
+from .locking import WorkspaceOwnership
 from ish.core.models import Project
 from ish.core.paths import ProjectPaths
 
 
 class ProjectReader(Protocol):
+    ownership: WorkspaceOwnership
     def paths(self, project_id: str) -> ProjectPaths: ...
     def load(self, project_id: str) -> Project: ...
 

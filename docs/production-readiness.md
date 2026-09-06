@@ -1,6 +1,6 @@
 # Production readiness assessment
 
-Assessed 2026-09-07 after service boundary and component selection changes.
+Assessed 2026-09-07 after workspace locking and storage I/O changes.
 
 ## Decision
 
@@ -26,8 +26,8 @@ Python 3.13.7 / LiteLLM 1.100.0:
 .\.venv39\Scripts\python.exe -m ish.demo --help
 ```
 
-All 111 tests passed on Python 3.9.13 in 93.263 seconds and on Python 3.13.7 in
-93.552 seconds. Compilation, dependency consistency, and demo import/argument
+All 125 tests passed on Python 3.9.13 in 90.655 seconds and on Python 3.13.7 in
+86.721 seconds. Compilation, dependency consistency, and demo import/argument
 parsing passed. Full suite outputs are `test-results-python39.txt` and
 `test-results-python313.txt` at the repository root. Tests use temporary directories and
 do not delete real application workspaces.
@@ -51,18 +51,18 @@ LoopEngine, per-Run capability snapshots, and injected conversation storage/cont
 The actual LiteLLM SDK is exercised with mock HTTP SSE and a local test
 tokenizer on both dependency versions. No live model API was called. Linux,
 Python 3.9.25/3.10/3.11/3.12, sustained load,
-disk-full faults, and power-loss durability were not verified here. Asyncio
-debug output reported slow callbacks during this run, consistent with the
-synchronous filesystem work described below; no performance target was measured.
+disk-full faults, and power-loss durability were not verified here. Injected slow
+storage tests verify event-loop responsiveness and cancellation drain; these
+are not sustained-throughput or deployment latency guarantees.
 
 ## Deployment blockers and limitations
 
 | Area | Current behavior and consequence | Required next work |
 | --- | --- | --- |
-| Workspace ownership | `services/tasks.py` tracks attached IDs inside one TaskManager only. Separate TaskManager instances/processes can bypass that guard and race JSON/JSONL writes, recovery, or deletion. | Process-level workspace ownership/locking, one shared service container, conflict tests and explicit lock-loss behavior. |
-| Persistence throughput | `ConversationStore.get()` replays the entire JSONL file for every delta; appends and metadata writes flush synchronously. Logging also performs synchronous filesystem checks and opens/closes a handler per event. Long conversations and concurrent Tasks can stall the event loop. | Indexed/incremental replay and an ordered persistence worker with explicit durability barriers; retain durable QUEUED semantics. Measure latency, memory, and throughput with realistic histories. |
-| Lifecycle trust | Public Project/Task save and execution now reload lifecycle/ownership state, reject stale deleted handles, and separate runtime state writes. Repositories remain lower-level storage APIs. There is no version/conflict checking across competing writers. | Process ownership, optimistic concurrency/version checks if needed, and an application authorization layer. |
-| Permanent deletion | Complete preflight rejects linked/escaping paths, but validation and recursive removal are separate. Another writer can change the tree, and an I/O error can leave a partially removed tree. | Exclusive ownership first; deletion journal/tombstone strategy and recovery tests for partial failures. Back up valuable data before using irreversible removal. |
+| Workspace ownership | OS locks guard manager transactions and span runtime recovery through shutdown/drain. Real subprocess conflict/crash release tests pass on Windows. | Validate POSIX/local deployment filesystems; no NFS/SMB claim. Lower-level writes require explicit ownership scopes. Arbitrary filesystem writers can bypass cooperative locks. |
+| Persistence throughput | Incremental projection eliminates full replay per delta. Ordered background I/O preserves fsync barriers and drains cancellation; per-delta operational logging is removed. | Measure deployment latency/memory/throughput. Fsync per delta still limits disk throughput; initial replay/context copies grow with history. Async UIs need StorageIO for synchronous CRUD. Unresponsive disk work can delay shutdown. |
+| Lifecycle trust | Public Project/Task save and execution now reload lifecycle/ownership state, reject stale deleted handles, and separate runtime state writes. Repositories remain lower-level storage APIs. Workspace ownership excludes cooperating competing processes; stale UI edits have no revision check. | Optimistic concurrency/version checks if needed, and an application authorization layer. |
+| Permanent deletion | Complete preflight rejects linked/escaping paths, but validation and recursive removal are separate. Noncooperating writers can change the tree, and an I/O error can leave a partially removed tree. | Ownership is implemented; deletion journal/tombstone strategy and recovery tests for partial failures. Back up valuable data before using irreversible removal. |
 | Provider cancellation | Cancelling a Run stops delta delivery; Python cannot forcibly cancel a synchronous network read. Daemon cleanup threads survive until reads return/time out. | Verify each deployed provider's timeout behavior, bound outstanding cleanup work, and add long-running cancellation/resource tests. |
 | Tool safety and history | Project-specific enabled tool names now constrain each Run, including Projects sharing a LoopEngine. Registered Python handlers remain trusted and have no OS sandbox. Structured calls/results still exist only during the Run. | Durable structured conversation events, OS/resource permission policy and isolation, side-effect/idempotency tests. Never automatically replay stale Runs. |
 | Logs and secrets | Logs exclude conversation/credential content through allowlisted fields, but are best effort and share the data filesystem. Environment references are the only SecretManager backend. | Decide on centralized logs/metrics, storage retention and access controls, alerting, and a secret backend. These service logs do not govern the provider SDK's own diagnostics. |
@@ -85,7 +85,8 @@ UI observer exceptions are isolated through RunEventPublisher, though a blocking
 synchronous UI callback can still stall the event loop. Component initialization
 is not a cross-file transaction: caught create/clone failures leave a soft-deleted
 Project and partial directories may remain. These changes strengthen service
-boundaries without solving multi-process ownership or filesystem throughput.
+boundaries while workspace ownership and incremental/off-thread storage address
+the previous blockers within the documented scope.
 
-Prioritize workspace ownership, persistence performance, structured tool history/policy, then Linux/provider and failure-mode
-validation before reconsidering production deployment.
+Prioritize structured tool history/policy, Linux/provider and failure-mode
+validation, and realistic storage/load measurements before reconsidering production.

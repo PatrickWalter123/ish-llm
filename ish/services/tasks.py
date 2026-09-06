@@ -10,6 +10,7 @@ from ish.core.paths import ProjectPaths, TaskPaths
 from .conversation import ConversationStore, conversation_store
 from .conversation_context import ConversationContextBuilder
 from .access import ProjectAccess
+from .locking import workspace_locked
 from .deletion import remove_owned_tree
 from .logging import log_event
 from .storage import atomic_json, child, read_json, record
@@ -26,6 +27,8 @@ class TaskRuntime:
     execution: Optional[asyncio.Task[None]] = None
     finished: asyncio.Event = field(default_factory=asyncio.Event)
     closed: bool = False
+    preparing: bool = False
+    interrupt_requested: bool = False
 
 
 class TaskRepository:
@@ -87,6 +90,12 @@ class TaskManager:
         self.conversations = conversations
         self.context_builder = context_builder if context_builder is not None else ConversationContextBuilder()
 
+    @property
+    def ownership(self):
+        if self.project_access is None:
+            raise RuntimeError("TaskManager needs project_access")
+        return self.project_access.repository.ownership
+
     def bind_project_access(self, access: ProjectAccess) -> None:
         if self.project_access is not None and self.project_access.repository is not access.repository:
             raise ValueError("TaskManager is already bound to a Project repository")
@@ -106,20 +115,28 @@ class TaskManager:
             raise ValueError("Task path ownership mismatch")
         return project
 
+    @workspace_locked
     def attach_runtime(self, task: Task) -> None:
         self._owner(task)
         key = (task.project_id, task.id)
         if key in self._attached:
             raise ValueError("Task already has an attached runtime")
+        self.ownership.claim_task(key)
         self._attached.add(key)
 
+    @workspace_locked
     def detach_runtime(self, task: Task) -> None:
-        self._attached.discard((task.project_id, task.id))
+        key = (task.project_id, task.id)
+        if key in self._attached:
+            self._attached.remove(key)
+            self.ownership.release_task(key)
 
+    @workspace_locked
     def initialize(self, project: Project) -> None:
         project = self.require_project(project)
         self.repository.initialize(project)
 
+    @workspace_locked
     def create(self, project: Project, title: str, *,
                default_engine: Optional[str] = None) -> Task:
         project = self.require_project(project)
@@ -132,6 +149,7 @@ class TaskManager:
                   related_id=project.id)
         return task
 
+    @workspace_locked
     def save(self, task: Task) -> None:
         self._owner(task)
         current = self.require_inactive(task)
@@ -144,6 +162,7 @@ class TaskManager:
         current.metadata = deepcopy(task.metadata)
         self.repository.save(current)
 
+    @workspace_locked
     def _save_runtime(self, task: Task) -> None:
         """Internal RunManager state transitions; public save edits configuration only."""
         self._owner(task)
@@ -153,14 +172,17 @@ class TaskManager:
             raise ValueError("Task is deleted")
         self.repository.save(task)
 
+    @workspace_locked
     def load(self, project: Project, task_id: str) -> Task:
         project = self.require_project(project, allow_deleted=True)
         return self.repository.load(project, task_id)
 
+    @workspace_locked
     def list(self, project: Project, *, include_deleted: bool = False) -> list[Task]:
         project = self.require_project(project, allow_deleted=True)
         return self.repository.list(project, include_deleted=include_deleted)
 
+    @workspace_locked
     def delete(self, task: Task, *, permanent: bool = False) -> None:
         """Mark deleted by default; permanent=True removes history and artifacts."""
         if type(permanent) is not bool:
@@ -175,6 +197,7 @@ class TaskManager:
                       permanent=False)
         task.status = TaskStatus.DELETED
 
+    @workspace_locked
     def restore(self, task: Task) -> None:
         self._owner(task)
         current = self.require_inactive(task)
@@ -185,6 +208,7 @@ class TaskManager:
         task.status = TaskStatus.IDLE
         log_event(current.paths.logs, "task.restored", entity_id=current.id)
 
+    @workspace_locked
     def clone(self, source: Task, project: Project, *, title: Optional[str] = None) -> Task:
         """Copy conversation/configuration, with no execution history or queue replay."""
         self._owner(source)
@@ -204,9 +228,10 @@ class TaskManager:
                   related_id=source.id)
         return clone
 
+    @workspace_locked
     def require_inactive(self, task: Task) -> Task:
         self._owner(task, allow_deleted=True)
-        if (task.project_id, task.id) in self._attached:
+        if self.ownership.task_attached((task.project_id, task.id)):
             raise ValueError("Task runtime is attached; shut down RunManager first")
         # Reload to avoid trusting a stale handle held by a caller.
         current = self.repository.reload(task)

@@ -1,0 +1,19 @@
+test_existing_lock_file_does_not_imply_ownership (tests.test_locking_io.LockTests) ... ok
+test_nested_ownership_releases_on_exception_and_keeps_lock_file (tests.test_locking_io.LockTests) ... ok
+test_real_process_crash_releases_os_lock_without_deleting_file (tests.test_locking_io.LockTests) ... ok
+test_another_store_append_is_incrementally_visible (tests.test_locking_io.ProjectionTests) ... ok
+test_corrupt_complete_event_repeatedly_raises (tests.test_locking_io.ProjectionTests) ... ok
+test_fsync_failure_does_not_acknowledge_or_cache_unwritten_delta (tests.test_locking_io.ProjectionTests) ... ok
+test_replacement_truncation_and_incomplete_tail_invalidate_cache (tests.test_locking_io.ProjectionTests) ... ok
+test_streaming_decodes_only_new_events_and_returns_isolated_snapshots (tests.test_locking_io.ProjectionTests) ... ok
+test_cancelled_submission_is_persisted_and_scheduled_once (tests.test_locking_io.RuntimeIOTests) ... ok
+test_concurrent_submissions_are_serial_and_preserve_all_inputs (tests.test_locking_io.RuntimeIOTests) ... ok
+test_interrupt_waits_for_delta_and_shutdown_keeps_ownership_until_drain (tests.test_locking_io.RuntimeIOTests) ... ok
+test_other_process_cannot_recover_or_mutate_attached_workspace (tests.test_locking_io.RuntimeIOTests) ... ok
+test_shared_repository_cannot_attach_same_task_through_other_task_manager (tests.test_locking_io.RuntimeIOTests) ... ok
+test_slow_storage_keeps_loop_responsive_and_cancellation_drains_write (tests.test_locking_io.RuntimeIOTests) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 6.375s
+
+OK

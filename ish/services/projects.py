@@ -11,6 +11,7 @@ from .tasks import TaskManager
 from .deletion import remove_owned_tree
 from .logging import log_event
 from .access import ProjectAccess
+from .locking import WorkspaceOwnership, workspace_locked
 from ish.components.registry import ComponentRegistry
 
 
@@ -21,16 +22,19 @@ class ProjectInitializer(Protocol):
 class ProjectRepository:
     def __init__(self, root: Path) -> None:
         self.root = root
+        self.ownership = WorkspaceOwnership(root)
 
     def paths(self, project_id: str) -> ProjectPaths:
         return ProjectPaths(child(self.root, project_id))
 
+    @workspace_locked
     def save(self, project: Project) -> None:
         data = record(project)
         data["config"] = asdict(project.config)
         atomic_json(project.paths.root / "project.json", data)
         log_event(project.paths.logs, "project.saved", entity_id=project.id)
 
+    @workspace_locked
     def load(self, project_id: str) -> Project:
         paths = self.paths(project_id)
         data = read_json(paths.root / "project.json")
@@ -43,6 +47,7 @@ class ProjectRepository:
         return Project(**{**data, "components": tuple(selected),
                           "config": ProjectConfig(**data["config"]), "paths": paths})
 
+    @workspace_locked
     def delete(self, project: Project) -> None:
         """Remove an owned Project tree; lifecycle checks belong to the manager."""
         if project.paths.root.absolute() != self.paths(project.id).root.absolute():
@@ -52,6 +57,7 @@ class ProjectRepository:
         log_event(self.root / "logs", "project.deleted", entity_id=project.id,
                   permanent=True)
 
+    @workspace_locked
     def list(self, *, include_deleted: bool = False) -> list[Project]:
         projects = [self.load(path.parent.name) for path in self.root.glob("*/project.json")]
         return sorted((project for project in projects if include_deleted or not project.deleted),
@@ -65,10 +71,12 @@ class ProjectManager:
         self.repository = repository
         self.tasks = tasks
         self.access = ProjectAccess(repository)
+        self.ownership = repository.ownership
         self.tasks.bind_project_access(self.access)
         self.components = components if components is not None else ComponentRegistry()
         self.initializers = (tasks, *initializers)
 
+    @workspace_locked
     def create(self, title: str, *, config: Optional[ProjectConfig] = None,
                components: tuple[str, ...] = ()) -> Project:
         selected = self.components.validate(components)
@@ -88,6 +96,7 @@ class ProjectManager:
         log_event(project.paths.logs, "project.created", entity_id=project.id)
         return project
 
+    @workspace_locked
     def save(self, project: Project) -> None:
         current = self.access.require(project)
         if project.deleted != current.deleted or project.components != current.components:
@@ -95,6 +104,7 @@ class ProjectManager:
         current.title, current.config = project.title, deepcopy(project.config)
         self.repository.save(current)
 
+    @workspace_locked
     def set_components(self, project: Project, names: tuple[str, ...]) -> None:
         current = self.access.require(project)
         current.components = self.components.validate(names)
@@ -104,16 +114,20 @@ class ProjectManager:
         self.repository.save(current)
         project.components = current.components
 
+    @workspace_locked
     def configure_component(self, project: Project, name: str, configuration: dict) -> None:
         current = self.access.require(project)
         self.components.configure(current, name, configuration)
 
+    @workspace_locked
     def load(self, project_id: str) -> Project:
         return self.repository.load(project_id)
 
+    @workspace_locked
     def list(self, *, include_deleted: bool = False) -> list[Project]:
         return self.repository.list(include_deleted=include_deleted)
 
+    @workspace_locked
     def delete(self, project: Project, *, permanent: bool = False) -> None:
         """Mark deleted by default; permanent=True removes the entire owned tree."""
         if type(permanent) is not bool:
@@ -130,6 +144,7 @@ class ProjectManager:
                       permanent=False)
         project.deleted = True
 
+    @workspace_locked
     def restore(self, project: Project) -> None:
         current = self.access.require(project, allow_deleted=True)
         # Re-run selected, idempotent components before activating a Project
@@ -147,6 +162,7 @@ class ProjectManager:
         project.deleted = False
         log_event(current.paths.logs, "project.restored", entity_id=current.id)
 
+    @workspace_locked
     def clone(self, source: Project, *, title: Optional[str] = None) -> Project:
         source = self.access.require(source)
         self.components.validate(source.components)

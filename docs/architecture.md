@@ -53,12 +53,33 @@ These adapters do not change queue ownership, cancellation intent, Engine
 events, or persistence responsibility. Python 3.9 and 3.13 run the same suite,
 including actual SDK/mock SSE and real Windows junction tests.
 
-The runtime assumes one RunManager owns a workspace in one process/event loop.
-Lifecycle mutations require that the affected runtime has been shut down;
-TaskManager tracks attached runtime identities, rejecting deletion/cloning even
-while its worker is idle, and also rejects persisted active Run state. Multiple
-RunManagers sharing one TaskManager cannot attach the same Task. No cross-process locking
-is implemented. Persistent models contain no runtime asyncio objects.
+The runtime uses one owning service container per workspace, in one process/event
+loop. ProjectRepository creates WorkspaceOwnership, shared by ProjectManager and
+TaskManager through ProjectAccess. Synchronous manager transactions acquire an
+exclusive nonblocking OS lock on `<projects-root>/.ish.lock`. Each attached Task
+retains ownership from before recovery through shutdown and storage drain, even
+when idle. Competing repository instances/processes raise WorkspaceBusyError
+before recovery or lifecycle mutation. Different workspaces are independent;
+Tasks in the owning workspace still execute concurrently.
+
+The lock uses Windows byte-range locking or POSIX flock, releases on handle close
+or process exit, and never uses PID age to steal ownership. The permanent lock
+file is outside Project trees and must never be deleted while processes might
+access the workspace. This is cooperative local-filesystem locking, not a
+distributed lease or protection against arbitrary filesystem writers. NFS/SMB and
+Linux deployment behavior need platform verification. Create a fresh repository
+after process fork; do not share inherited live service instances.
+
+Within the owner, synchronous transactions use an instance-owned threading RLock.
+Attached Task IDs are shared across TaskManagers bound to the same repository,
+preventing duplicate attachment or lifecycle mutation even while idle. Shutdown
+all affected runtimes before removal/cloning. No locks enter persisted models.
+
+Public manager APIs supply ownership scopes automatically. ProjectRepository also
+guards reads/writes. Direct lower-level Task/Run/Step repository, ConversationStore,
+and component writes require the caller's `repository.ownership.scope()` because
+they cannot infer an arbitrary injected workspace root. They remain trusted
+storage APIs, not an authorization boundary.
 
 ProjectManager binds its ProjectAccess to TaskManager. Mutation/execution entry
 points reload Project state rather than trusting stale handles. Public save
@@ -70,8 +91,30 @@ remain lower-level storage APIs and are not authorization boundaries.
 ConversationContextBuilder owns turn ordering for both Run context and Task
 cloning. RunManager and TaskManager receive a ConversationStore factory rather
 than choosing storage paths at every call. Defaults retain the existing Task
-JSONL layout. These abstractions separate conversation policy from scheduling;
-they do not yet change synchronous I/O behavior.
+JSONL layout. RunManager retains one store per attached Task and releases it on
+shutdown. ConversationStore projects only newly appended complete events using
+a byte offset and file identity/size/mtime. Replacement/truncation resets the
+projection; malformed complete records repeatedly fail. Reads return deep copies.
+A threading RLock protects each store. External in-place edits to append-only
+records are unsupported.
+
+StorageIO runs filesystem transactions with asyncio.to_thread, with one in-flight
+operation per RunManager and no unbounded executor submission queue. Recovery,
+QUEUED creation, Run begin/finalization, context reads, Step writes, and deltas
+await this ordered lane. Engines/tools and UI callbacks stay on the event loop.
+Injected synchronous storage factories, repositories, context builders, and
+capability resolvers must support worker-thread calls: no required running event
+loop or thread-affine connections.
+
+Cancellation drains submitted disk operations before propagating. Accepted
+submit/start/shutdown calls finish before forwarding cancellation: a cancelled
+submit can still accept and schedule its request. Do not blindly resubmit.
+Interrupt during Run preparation records intent and finalizes the claimed Run
+as interrupted without executing its Engine. Shutdown holds ownership until
+workers and disk work stop. An unresponsive filesystem can delay shutdown.
+Synchronous Project/Task APIs remain available; async UI callers can use
+`StorageIO(projects.ownership).run(projects.create, ...)`. Do not pass coroutine
+APIs such as RunManager.submit to StorageIO.
 
 Engine contexts are snapshots of committed turns through the current request.
 Assistant answers are paired with user inputs by Run ID, since queued requests
@@ -90,9 +133,13 @@ Engine coroutine starts. Failed Engines do not discard subsequent queued input.
 
 Shutdown stops new submissions, interrupts active executions, and stops workers
 while retaining queued JSONL messages. `wait_idle` reports a stopped worker if
-shutdown prevents its queue from draining. All writes are synchronously flushed;
-mutable JSON uses atomic replacement, and Linux writes also sync the containing
-directory. Conversation replay ignores a final unterminated record, and the
+shutdown prevents its queue from draining. Acknowledged writes remain fsynced;
+RunManager waits off the event loop. Mutable JSON uses atomic replacement and
+POSIX directory fsync. Conversation appends fsync the file each time and sync the
+directory on first creation; appending does not change the directory entry.
+QUEUED is durable before queue insertion; streaming notifications follow durable
+deltas. Per-delta operational logging is omitted because JSONL already records
+the event; message lifecycle and domain operation logging remain. Conversation replay ignores a final unterminated record, and the
 next append truncates only that incomplete tail. Malformed complete records
 raise errors rather than silently discarding history.
 
@@ -101,7 +148,8 @@ default. Their keyword-only `permanent=True` option removes the complete owned
 tree after runtime, identity, path containment, and symlink/junction checks.
 Project deletion checks all Tasks, including soft-deleted Tasks, before removal.
 Restore reloads metadata, so permanently deleted objects cannot be resurrected
-by restore. Removal assumes no concurrent filesystem mutation; recursive
+by restore. Workspace ownership excludes cooperating writers during removal; arbitrary
+filesystem mutation remains unsupported; recursive
 deletion is not transactional and an I/O failure may leave a partial tree.
 The old `soft_delete` API was removed. Task clones normalize turn
 order and copy conversation/configuration with fresh Message and Task IDs,

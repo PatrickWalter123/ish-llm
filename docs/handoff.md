@@ -6,6 +6,37 @@ Continue development of a production-oriented Linux TUI AI client built with Pyt
 
 Read `AGENTS.md` and `docs/architecture.md` before making architectural changes.
 
+## Latest: workspace locking and storage I/O (2026-09-07)
+
+* WorkspaceOwnership uses stable `<projects-root>/.ish.lock` with nonblocking OS
+  locks (Windows byte-range/POSIX flock). Lifecycle transactions are guarded;
+  runtime leases span recovery through shutdown/drain, including idle workers.
+  Process death releases the lock without PID timeouts or deleting the file.
+* Share one repository/service container per workspace. Attached Task IDs are
+  coordinated across its TaskManagers; other repository instances fail fast with
+  WorkspaceBusyError. This allows one owning process, not distributed workers.
+* StorageIO offloads ordered persistence/context work with one in-flight thread
+  operation per RunManager. Cancellation drains writes. Accepted submit/start/
+  shutdown calls finish before forwarding cancellation. Run preparation supports
+  interrupt before the Engine child exists.
+* ConversationStore caches incremental replay, detects replacement/truncation,
+  protects its projection with an instance lock, and returns detached snapshots.
+  RunManager reuses one store per attached Task. Per-delta operational logs and
+  repeated directory sync/tail checks are removed; every delta still fsyncs.
+* JSON/JSONL domain formats and hierarchy remain unchanged. The infrastructure
+  lock file lives outside Project trees. Lower-level writes bypassing managers
+  need an ownership scope. Async UIs can use StorageIO for synchronous CRUD.
+  Custom synchronous storage/context/capability adapters run on worker threads.
+* All 125 tests passed: Python 3.9.13 in 90.655 seconds, Python 3.13.7 in 86.721
+  seconds. Full output: test-results-python39.txt / test-results-python313.txt.
+  Fourteen new tests cover actual subprocess conflicts/crash release, shared
+  attachment, incremental decode work, cache invalidation, fsync failure, loop
+  responsiveness, cancellation drain, accepted input and shutdown ordering.
+
+Older sections describe historical milestones. Tool permissions, structured tool
+history, Linux/network-filesystem validation, live-provider testing, backup,
+migration and production-load verification remain outstanding.
+
 ## First Task Progress (2026-09-06)
 
 The workspace initially contained only `AGENTS.md`, this handoff, and the
