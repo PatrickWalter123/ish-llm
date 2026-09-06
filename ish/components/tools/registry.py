@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
-from dataclasses import dataclass
+from ish.compat import dataclass
 from typing import Any
 
 from jsonschema import Draft202012Validator

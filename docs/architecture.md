@@ -13,7 +13,8 @@ The application deliberately separates persistent domain state from runtime exec
 The initial workspace contained documentation only. The `ish` package now
 implements the domain and persistence/runtime foundation described below:
 
-* `ish/core`: slotted Project, Task, Message, Run, and Step dataclasses, persisted enums, and major paths
+* `ish/core`: Project, Task, Message, Run, and Step dataclasses, persisted enums, and major paths (native slots on Python 3.10+)
+* `ish/compat.py`: Python 3.9 compatibility adapters; no standard-library monkeypatching
 * `ish/engines`: Engine protocol, context snapshots, event types, registry, and LiteLLM LoopEngine
 * `ish/components`: reusable capabilities; tools implemented, RAG/MCP/skills/sub-agents/workflows packages reserved for future CRUD and adapters
 * `ish/providers`: LiteLLM synchronous stream transport and bounded async bridge
@@ -33,6 +34,21 @@ configuration is intentionally minimal (model, optional temperature/API base,
 default engine, and a credential reference); it has no API-key
 field. Archive import/export, migration, cleanup policies, and subsystem data
 cloning are also deferred.
+
+The supported runtime floor is Python 3.9. The same domain fields and JSON/JSONL
+formats apply across versions. Python 3.9 lacks native dataclass slots, so the
+compatibility decorator uses ordinary dataclasses there and retains native
+slots on 3.10+. Explicit string-valued enums preserve their string/JSON values.
+Optional annotations remain resolvable through `typing.get_type_hints` on 3.9.
+
+Python 3.9 installs LiteLLM 1.80.17 and jsonschema 4.25.1; newer interpreters keep
+the existing dependency ranges. `async-timeout==5.0.1` supplies timeout scopes
+below Python 3.11, and 3.11+ uses `asyncio.timeout`. Async closing has a 3.9
+adapter. Windows junction checks below 3.12 inspect the mount-point reparse tag
+through `lstat`, so deletion safety is not disabled on older Python versions.
+These adapters do not change queue ownership, cancellation intent, Engine
+events, or persistence responsibility. Python 3.9 and 3.13 run the same suite,
+including actual SDK/mock SSE and real Windows junction tests.
 
 The runtime assumes one RunManager owns a workspace in one process/event loop.
 Lifecycle mutations require that the affected runtime has been shut down;

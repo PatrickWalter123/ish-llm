@@ -1,3 +1,4 @@
+from typing import Optional
 import asyncio
 from collections.abc import Callable
 from copy import deepcopy
@@ -43,10 +44,10 @@ class RunManager:
     """Single-process, single-event-loop owner of a workspace's active Tasks."""
 
     def __init__(self, tasks: TaskManager, engines: EngineRegistry, *,
-                 runs: RunRepository | None = None,
-                 steps: StepManager | None = None,
-                 on_event: Callable[[Run, EngineEvent], None] | None = None,
-                 repository: RunRepository | None = None) -> None:
+                 runs: Optional[RunRepository] = None,
+                 steps: Optional[StepManager] = None,
+                 on_event: Optional[Callable[[Run, EngineEvent], None]] = None,
+                 repository: Optional[RunRepository] = None) -> None:
         if repository is not None and runs is not None:
             raise ValueError("Specify repository or runs, not both")
         self.tasks = tasks
@@ -104,7 +105,7 @@ class RunManager:
         self._runtime(project, task)
 
     async def submit(self, project: Project, task: Task, content: str, *,
-                     engine: str | None = None) -> Message:
+                     engine: Optional[str] = None) -> Message:
         runtime = self._runtime(project, task)
         selected = engine or runtime.task.default_engine or runtime.project.config.default_engine
         store = ConversationStore(runtime.task.paths.conversation)
@@ -258,7 +259,7 @@ class RunManager:
             raise RuntimeError("Engine ended with unfinished or failed Steps")
 
     def _finish(self, runtime: TaskRuntime, run: Run, status: RunStatus,
-                error: str | None = None) -> None:
+                error: Optional[str] = None) -> None:
         for step in self.steps.list(run):
             if step.status in (StepStatus.PENDING, StepStatus.RUNNING):
                 if status == RunStatus.FAILED:

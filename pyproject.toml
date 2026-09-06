@@ -6,8 +6,14 @@ build-backend = "setuptools.build_meta"
 name = "ish"
 version = "0.1.0"
 description = "Durable task and engine foundation for an AI TUI client"
-requires-python = ">=3.12"
-dependencies = ["litellm>=1.100,<2", "jsonschema>=4.23,<5"]
+requires-python = ">=3.9"
+dependencies = [
+    "litellm==1.80.17; python_version < '3.10'",
+    "litellm>=1.100,<2; python_version >= '3.10'",
+    "jsonschema==4.25.1; python_version < '3.10'",
+    "jsonschema>=4.23,<5; python_version >= '3.10'",
+    "async-timeout==5.0.1; python_version < '3.11'",
+]
 
 [tool.setuptools.packages.find]
 include = ["ish*"]

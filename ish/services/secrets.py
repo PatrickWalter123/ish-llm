@@ -1,4 +1,5 @@
 """Resolve credentials at execution time without writing their values to disk."""
+from typing import Optional
 
 import os
 import re
@@ -14,7 +15,7 @@ class SecretResolver(Protocol):
 class SecretManager:
     """Minimal environment-backed resolver. References use env:VARIABLE_NAME."""
 
-    def __init__(self, *, log_dir: Path | None = None) -> None:
+    def __init__(self, *, log_dir: Optional[Path] = None) -> None:
         self.log_dir = log_dir
 
     def resolve(self, reference: str) -> str:

@@ -1,4 +1,6 @@
 """Domain-scoped, rotating operational logs using Python's logging library."""
+from ish.compat import is_junction
+from typing import Optional
 
 import json
 import logging
@@ -15,9 +17,9 @@ class _RaisingFileHandler(RotatingFileHandler):
         raise OSError("Operational log write failed")
 
 
-def log_event(logs: Path, event: str, *, entity_id: str | None = None,
-              related_id: str | None = None, status: str | None = None,
-              count: int | None = None, permanent: bool | None = None) -> None:
+def log_event(logs: Path, event: str, *, entity_id: Optional[str] = None,
+              related_id: Optional[str] = None, status: Optional[str] = None,
+              count: Optional[int] = None, permanent: Optional[bool] = None) -> None:
     """Write only allowlisted operational fields; never accept arbitrary metadata.
 
     No global logger/handler cache and no open handle survives this call. This
@@ -44,12 +46,12 @@ def log_event(logs: Path, event: str, *, entity_id: str | None = None,
     logger.propagate = False
     try:
         for directory in (logs, *logs.parents):
-            if directory.is_symlink() or directory.is_junction():
+            if directory.is_symlink() or is_junction(directory):
                 raise OSError("Linked log directory")
         logs.mkdir(mode=0o700, exist_ok=True)
         path = logs / "service.log"
         for candidate in (path, *(logs / f"service.log.{i}" for i in range(1, 4))):
-            if candidate.is_symlink() or candidate.is_junction():
+            if candidate.is_symlink() or is_junction(candidate):
                 raise OSError("Linked log file")
         handler = _RaisingFileHandler(path, maxBytes=1_048_576, backupCount=3, encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(message)s"))

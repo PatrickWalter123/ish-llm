@@ -1,3 +1,4 @@
+from ish.compat import timeout
 import asyncio
 import subprocess
 import sys
@@ -42,7 +43,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.project, task or self.task), timeout=10)
 
     async def until(self, predicate) -> None:
-        async with asyncio.timeout(10):
+        async with timeout(10):
             while not predicate():
                 await asyncio.sleep(0.001)
 

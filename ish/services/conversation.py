@@ -1,3 +1,4 @@
+from typing import Optional
 import json
 import os
 from copy import deepcopy
@@ -94,8 +95,8 @@ class ConversationStore:
         raise KeyError(message_id)
 
     def create(self, role: MessageRole, content: str, status: MessageStatus,
-               *, message_id: str | None = None, run_id: str | None = None,
-               metadata: dict | None = None) -> Message:
+               *, message_id: Optional[str] = None, run_id: Optional[str] = None,
+               metadata: Optional[dict] = None) -> Message:
         message = Message(message_id or new_id(), role, content, status,
                           run_id=run_id, metadata=deepcopy(metadata or {}))
         if any(existing.id == message.id for existing in self.list()):

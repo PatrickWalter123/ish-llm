@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from ish.compat import dataclass
 from pathlib import Path
 
 

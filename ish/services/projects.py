@@ -1,3 +1,4 @@
+from typing import Optional
 from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
@@ -58,7 +59,7 @@ class ProjectManager:
         self.tasks = tasks
         self.initializers = (tasks, *initializers)
 
-    def create(self, title: str, *, config: ProjectConfig | None = None) -> Project:
+    def create(self, title: str, *, config: Optional[ProjectConfig] = None) -> Project:
         project_id = new_id()
         project = Project(project_id, title, self.repository.paths(project_id),
                           config=deepcopy(config) if config else ProjectConfig())
@@ -102,7 +103,7 @@ class ProjectManager:
         project.deleted = False
         log_event(current.paths.logs, "project.restored", entity_id=current.id)
 
-    def clone(self, source: Project, *, title: str | None = None) -> Project:
+    def clone(self, source: Project, *, title: Optional[str] = None) -> Project:
         tasks = self.tasks.list(source)
         for task in tasks:
             self.tasks.require_inactive(task)

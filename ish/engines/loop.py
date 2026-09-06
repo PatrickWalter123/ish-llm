@@ -1,12 +1,15 @@
 """Stream completions, execute requested tools, and repeat within one Run."""
+from ish.compat import timeout
+from typing import Optional
 
 import asyncio
 import json
 import math
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
-from contextlib import aclosing
+from ish.compat import aclosing
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import field
+from ish.compat import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -26,7 +29,7 @@ class LoopOptions:
     max_iterations: int = 8
     request_timeout: float = 60.0
     tool_timeout: float = 30.0
-    max_tokens: int | None = None
+    max_tokens: Optional[int] = None
     buffer_size: int = 8
     max_tool_calls: int = 16
     max_argument_chars: int = 65536
@@ -67,10 +70,10 @@ class _ToolCall:
 class _Turn:
     content: list[str] = field(default_factory=list)
     calls: dict[int, _ToolCall] = field(default_factory=dict)
-    finish_reason: str | None = None
+    finish_reason: Optional[str] = None
     size: int = 0
 
-    def add(self, chunk: Any, options: LoopOptions) -> str | None:
+    def add(self, chunk: Any, options: LoopOptions) -> Optional[str]:
         choices = _get(chunk, "choices", [])
         if not choices:
             return None  # e.g. the optional usage-only final chunk
@@ -132,9 +135,9 @@ class _Turn:
 
 
 class LoopEngine:
-    def __init__(self, *, tools: ToolRegistry | None = None,
-                 secrets: SecretResolver | None = None,
-                 options: LoopOptions | None = None,
+    def __init__(self, *, tools: Optional[ToolRegistry] = None,
+                 secrets: Optional[SecretResolver] = None,
+                 options: Optional[LoopOptions] = None,
                  completion_fn: Callable[..., Iterator[Any]] = completion) -> None:
         self.tools = tools or ToolRegistry()
         self.secrets = secrets
@@ -189,7 +192,7 @@ class LoopEngine:
                 # Use a fresh transcript: a cancelled worker may still hold this
                 # request while waiting for its synchronous network read to end.
                 request["messages"] = deepcopy(messages)
-                async with asyncio.timeout(self.options.request_timeout):
+                async with timeout(self.options.request_timeout):
                     async with aclosing(stream_completion(
                         request, completion_fn=self.completion_fn,
                         buffer_size=self.options.buffer_size,
@@ -213,7 +216,7 @@ class LoopEngine:
             except Exception as error:
                 # Only our own controlled messages may enter Step persistence.
                 reason = (str(error) if isinstance(error, LoopEngineError) else
-                          "LLM request timed out" if isinstance(error, TimeoutError) else
+                          "LLM request timed out" if isinstance(error, (TimeoutError, asyncio.TimeoutError)) else
                           "LLM iteration failed")
                 yield EngineEvent(EngineEventType.STEP_FAILED, step_id=step_id,
                                   error=reason)
@@ -223,14 +226,15 @@ class LoopEngine:
                 return
             messages.append({"role": "assistant", "content": "".join(turn.content) or None,
                              "tool_calls": [call.message() for call in calls]})
-            for call, (tool, arguments) in zip(calls, prepared, strict=True):
+            # prepared is built one-for-one from calls before any tool executes.
+            for call, (tool, arguments) in zip(calls, prepared):
                 seen_call_ids.add(call.id)
                 tool_step_id = new_id()
                 yield EngineEvent(EngineEventType.STEP_STARTED, step_id=tool_step_id,
                                   kind="tool", name=tool.name,
                                   metadata={"iteration": iteration, "tool_call_id": call.id})
                 try:
-                    async with asyncio.timeout(self.options.tool_timeout):
+                    async with timeout(self.options.tool_timeout):
                         result = await tool.handler(arguments)
                     content = result if isinstance(result, str) else json.dumps(
                         result, ensure_ascii=False, allow_nan=False)

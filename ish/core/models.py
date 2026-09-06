@@ -1,6 +1,8 @@
-from dataclasses import dataclass, field
+from typing import Optional
+from dataclasses import field
+from ish.compat import dataclass
 from datetime import datetime, timezone
-from enum import StrEnum
+from ish.compat import StrEnum
 from uuid import uuid4
 
 from .paths import ProjectPaths, RunPaths, StepPaths, TaskPaths
@@ -68,11 +70,11 @@ class StepStatus(StrEnum):
 @dataclass(slots=True)
 class ProjectConfig:
     model: str = ""
-    temperature: float | None = 0.7
+    temperature: Optional[float] = 0.7
     default_engine: str = "loop"
     # Only a reference may be stored here; actual credentials need SecretManager.
-    credential_ref: str | None = None
-    api_base: str | None = None
+    credential_ref: Optional[str] = None
+    api_base: Optional[str] = None
 
 
 @dataclass(slots=True)
@@ -96,8 +98,8 @@ class Task:
     title: str
     paths: TaskPaths
     status: TaskStatus = TaskStatus.IDLE
-    default_engine: str | None = None
-    current_run_id: str | None = None
+    default_engine: Optional[str] = None
+    current_run_id: Optional[str] = None
     created_at: str = field(default_factory=now)
     metadata: dict = field(default_factory=dict)
 
@@ -112,7 +114,7 @@ class Message:
     role: MessageRole
     content: str
     status: MessageStatus
-    run_id: str | None = None
+    run_id: Optional[str] = None
     created_at: str = field(default_factory=now)
     metadata: dict = field(default_factory=dict)
 
@@ -131,9 +133,9 @@ class Run:
     paths: RunPaths
     status: RunStatus = RunStatus.PENDING
     created_at: str = field(default_factory=now)
-    started_at: str | None = None
-    ended_at: str | None = None
-    error: str | None = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    error: Optional[str] = None
     metadata: dict = field(default_factory=dict)
 
 
@@ -150,7 +152,7 @@ class Step:
     paths: StepPaths
     status: StepStatus = StepStatus.PENDING
     created_at: str = field(default_factory=now)
-    started_at: str | None = None
-    ended_at: str | None = None
-    error: str | None = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    error: Optional[str] = None
     metadata: dict = field(default_factory=dict)

@@ -85,6 +85,15 @@ checks, round trips, task filtering, and duplicate Step IDs.
 
 ## Current Architecture
 
+Python 3.9 compatibility update (2026-09-06):
+
+* User-provided `D:\Program Files\Python39\python.exe` is Python 3.9.13. It was used to create `.venv39`, separately from the existing Python 3.13 `.venv`.
+* Supported Python floor changed to 3.9. `ish.compat` handles dataclass slots, string enums, async timeout/closing, and junction detection. Optional annotations and Step dispatch use 3.9-compatible forms.
+* Python 3.9 installs pinned LiteLLM 1.80.17/jsonschema 4.25.1; Python 3.10+ keeps newer dependency ranges. `constraints-python39.txt` captures 59 tested runtime dependency versions.
+* Python 3.9 uses regular dataclasses; 3.10+ retains slots. Declared fields, frozen behavior, enum values, and JSON/JSONL persistence are unchanged.
+* All 91 tests passed on Python 3.9.13 (59.162 seconds) and Python 3.13.7 (53.116 seconds). Both use actual LiteLLM SDKs with mock SSE. New tests cover type-hint resolution, enum formatting, timeout/cancellation, async cleanup, and real Windows junction deletion rejection.
+* Python 3.9.25 and Linux were not directly run. No live model API was called. Production ownership, I/O performance, tool policy/history limitations remain outstanding.
+
 Latest organization/lifecycle changes:
 
 * Removed `ish/engines/fake.py`; deterministic tests use `tests/support/fake_engine.py`.

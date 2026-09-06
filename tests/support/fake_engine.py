@@ -1,4 +1,5 @@
 """Deterministic test engine with controllable streaming and failure points."""
+from typing import Optional
 
 import asyncio
 from collections.abc import AsyncIterator
@@ -9,9 +10,9 @@ from ish.engines.base import EngineContext, EngineEvent, EngineEventType
 
 class FakeStreamingEngine:
     def __init__(self, chunks: tuple[str, ...] = ("Hello", " ", "world"), *,
-                 delay: float = 0, gate: asyncio.Event | None = None,
-                 fail_after: int | None = None,
-                 fail_inputs: frozenset[str] | None = None) -> None:
+                 delay: float = 0, gate: Optional[asyncio.Event] = None,
+                 fail_after: Optional[int] = None,
+                 fail_inputs: Optional[frozenset[str]] = None) -> None:
         if delay < 0 or (fail_after is not None and not 0 <= fail_after <= len(chunks)):
             raise ValueError("Invalid fake engine timing or failure point")
         self.chunks = chunks

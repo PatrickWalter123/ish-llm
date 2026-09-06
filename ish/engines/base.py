@@ -1,6 +1,8 @@
+from typing import Optional
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
-from enum import StrEnum
+from dataclasses import field
+from ish.compat import dataclass
+from ish.compat import StrEnum
 from typing import Protocol
 
 from ish.core.models import Message, Project, Run, Task
@@ -19,11 +21,11 @@ class EngineEventType(StrEnum):
 class EngineEvent:
     type: EngineEventType
     text: str = ""
-    step_id: str | None = None
+    step_id: Optional[str] = None
     kind: str = "llm"
     name: str = ""
     metadata: dict = field(default_factory=dict)
-    error: str | None = None
+    error: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)

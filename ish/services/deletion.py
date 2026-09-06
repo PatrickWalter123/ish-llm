@@ -1,4 +1,5 @@
 """Validate the full owned directory before destructive filesystem operations."""
+from ish.compat import is_junction
 
 import os
 import shutil
@@ -18,7 +19,7 @@ def remove_owned_tree(owner: Path, target: Path, identifier: str) -> None:
         raise ValueError("Deletion target does not match the owned object")
     # Reject redirected ancestors too, including Windows junctions.
     for path in (target, *target.parents):
-        if path.is_symlink() or path.is_junction():
+        if path.is_symlink() or is_junction(path):
             raise ValueError("Deletion through linked paths is not allowed")
     resolved_owner = owner.resolve(strict=True)
     resolved_target = target.resolve(strict=True)
@@ -33,7 +34,7 @@ def remove_owned_tree(owner: Path, target: Path, identifier: str) -> None:
     for directory, names, files in os.walk(resolved_target, followlinks=False, onerror=fail):
         for name in (*names, *files):
             entry = Path(directory) / name
-            if entry.is_symlink() or entry.is_junction():
+            if entry.is_symlink() or is_junction(entry):
                 raise ValueError("Remove linked contents before permanent deletion")
     # Absolute target and containment have been verified above.
     shutil.rmtree(resolved_target)

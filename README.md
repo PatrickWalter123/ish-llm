@@ -1,6 +1,6 @@
 # ish
 
-Durable execution foundation for a Python 3.12+ AI TUI client. Includes a
+Durable execution foundation for a Python 3.9+ AI TUI client. Includes a
 LiteLLM LoopEngine that streams text,
 executes explicitly registered tools, and continues until a final answer.
 There is no TUI yet.
@@ -14,7 +14,35 @@ python -m pip install -e .
 ```
 
 On Windows, activate with `.\.venv\Scripts\Activate.ps1`, or invoke
-`.\.venv\Scripts\python.exe` directly. LiteLLM 1.100.0 was used for SDK verification.
+`.\.venv\Scripts\python.exe` directly.
+
+For the installed Python 3.9.13 on this machine, use a separate environment:
+
+```powershell
+& 'D:\Program Files\Python39\python.exe' -m venv .venv39
+.\.venv39\Scripts\python.exe -m pip install 'pip==25.3'
+.\.venv39\Scripts\python.exe -m pip install -c constraints-python39.txt -e .
+.\.venv39\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+If `.venv39` already exists from this refactor, run its Python directly.
+The global Python installation and existing `.venv` are not replaced.
+`constraints-python39.txt` pins the 59 runtime dependency versions resolved and
+tested on Windows/Python 3.9.13. Use those constraints only with Python 3.9;
+platform-specific wheel availability on Linux has not been tested.
+
+Python 3.9 installs LiteLLM 1.80.17 and jsonschema 4.25.1 through environment
+markers in `pyproject.toml`; Python 3.10+ retains the existing newer dependency
+ranges. These older releases explicitly support Python 3.9:
+[LiteLLM package metadata](https://pypi.org/project/litellm/1.80.17/),
+[jsonschema package metadata](https://pypi.org/project/jsonschema/4.25.1/).
+Python 3.9/3.10 use the
+[async-timeout 5.0.1 backport](https://pypi.org/project/async-timeout/5.0.1/).
+
+`ish.compat` provides string enums, timeout/async closing, dataclass options,
+and Windows junction detection without patching the standard library. Python
+3.9 uses ordinary dataclasses with the same fields/defaults/frozen behavior;
+native slots remain enabled on Python 3.10+. Persistence formats are unchanged.
 
 ## Run the tests
 
@@ -30,6 +58,12 @@ token accounting with a local test vocabulary. It covers
 streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
+
+Latest verification: all 91 tests passed on both Python 3.9.13 (59.162 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (53.116 seconds, LiteLLM 1.100.0). Both SDK
+versions passed the actual SDK/mock SSE test. These results cover the installed
+interpreters; Python 3.9.25 was not separately executed. The test outputs are
+`test-results-python39.txt` and `test-results-python313.txt`.
 
 ## Run a real streaming request
 

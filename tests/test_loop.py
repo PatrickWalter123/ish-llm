@@ -1,3 +1,5 @@
+from ish.compat import timeout
+from typing import Optional
 import asyncio
 import importlib
 import json
@@ -25,8 +27,8 @@ from ish.services.secrets import SecretManager
 from ish.services.tasks import TaskManager
 
 
-def chunk(text: str | None = None, *, calls: list | None = None,
-          finish: str | None = None) -> dict[str, Any]:
+def chunk(text: Optional[str] = None, *, calls: Optional[list] = None,
+          finish: Optional[str] = None) -> dict[str, Any]:
     return {"choices": [{"index": 0, "delta": {"content": text, "tool_calls": calls},
                          "finish_reason": finish}]}
 
@@ -88,7 +90,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.store.get(run.assistant_message_id).content.endswith(event.text))
 
     async def until(self, predicate) -> None:
-        async with asyncio.timeout(10):
+        async with timeout(10):
             while not predicate():
                 await asyncio.sleep(0.005)
 
@@ -473,13 +475,13 @@ class StreamBridgeTests(unittest.IsolatedAsyncioTestCase):
                 closed.set()
         stream = stream_completion({}, completion_fn=completion_fn, buffer_size=1)
         try:
-            await asyncio.wait_for(anext(stream), 5)
+            await asyncio.wait_for(stream.__anext__(), 5)
             await asyncio.sleep(0.05)
             # One consumed chunk, one buffered chunk, one pending put.
             self.assertLessEqual(len(produced), 3)
         finally:
             await stream.aclose()
-        async with asyncio.timeout(5):
+        async with timeout(5):
             while not closed.is_set():
                 await asyncio.sleep(0.005)
 

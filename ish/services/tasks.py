@@ -1,5 +1,7 @@
+from typing import Optional
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import field
+from ish.compat import dataclass
 from copy import deepcopy
 
 from ish.core.models import (
@@ -18,9 +20,9 @@ class TaskRuntime:
 
     project: Project
     task: Task
-    queue: asyncio.Queue[str | None] = field(default_factory=asyncio.Queue)
-    worker: asyncio.Task[None] | None = None
-    execution: asyncio.Task[None] | None = None
+    queue: asyncio.Queue[Optional[str]] = field(default_factory=asyncio.Queue)
+    worker: Optional[asyncio.Task[None]] = None
+    execution: Optional[asyncio.Task[None]] = None
     finished: asyncio.Event = field(default_factory=asyncio.Event)
     closed: bool = False
 
@@ -74,7 +76,7 @@ class TaskRepository:
 class TaskManager:
     """Task lifecycle only. Call lifecycle mutations while runtime is detached."""
 
-    def __init__(self, repository: TaskRepository | None = None) -> None:
+    def __init__(self, repository: Optional[TaskRepository] = None) -> None:
         self.repository = repository if repository is not None else TaskRepository()
         self._attached: set[tuple[str, str]] = set()
 
@@ -91,7 +93,7 @@ class TaskManager:
         self.repository.initialize(project)
 
     def create(self, project: Project, title: str, *,
-               default_engine: str | None = None) -> Task:
+               default_engine: Optional[str] = None) -> Task:
         if project.deleted:
             raise ValueError("Project is deleted")
         self.initialize(project)
@@ -135,7 +137,7 @@ class TaskManager:
         task.status = TaskStatus.IDLE
         log_event(current.paths.logs, "task.restored", entity_id=current.id)
 
-    def clone(self, source: Task, project: Project, *, title: str | None = None) -> Task:
+    def clone(self, source: Task, project: Project, *, title: Optional[str] = None) -> Task:
         """Copy conversation/configuration, with no execution history or queue replay."""
         self.require_inactive(source)
         clone = self.create(project, title if title is not None else source.title,

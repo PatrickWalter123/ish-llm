@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 import unittest
 from dataclasses import fields
@@ -36,7 +37,7 @@ class PersistenceTests(unittest.TestCase):
         for model in (Project, Task, Message, Run, Step):
             names = {item.name for item in fields(model)}
             self.assertTrue(names.isdisjoint({"queue", "worker", "execution", "lock"}))
-            self.assertIn("__slots__", model.__dict__)
+            self.assertEqual("__slots__" in model.__dict__, sys.version_info >= (3, 10))
         with self.assertRaises(TypeError):
             ProjectConfig(api_key="must-not-be-persisted")
         config = read_json(self.project.paths.root / "project.json")["config"]

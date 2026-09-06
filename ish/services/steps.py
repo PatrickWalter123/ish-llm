@@ -1,3 +1,4 @@
+from typing import Optional
 from ish.core.models import Run, Step, StepStatus, new_id, now
 from ish.core.paths import StepPaths
 from ish.engines.base import EngineEvent, EngineEventType
@@ -35,11 +36,11 @@ class StepRepository:
 class StepManager:
     """Step lifecycle; storage is delegated to StepRepository."""
 
-    def __init__(self, repository: StepRepository | None = None) -> None:
+    def __init__(self, repository: Optional[StepRepository] = None) -> None:
         self.repository = repository if repository is not None else StepRepository()
 
     def create(self, run: Run, kind: str, name: str, *,
-               step_id: str | None = None, metadata: dict | None = None) -> Step:
+               step_id: Optional[str] = None, metadata: Optional[dict] = None) -> Step:
         identifier = step_id or new_id()
         if self.repository.exists(run, identifier):
             raise ValueError("Duplicate Step ID")
@@ -66,7 +67,7 @@ class StepManager:
         self.save(step)
         log_event(step.paths.logs, "step.started", entity_id=step.id)
 
-    def _finish(self, step: Step, status: StepStatus, error: str | None = None) -> None:
+    def _finish(self, step: Step, status: StepStatus, error: Optional[str] = None) -> None:
         if step.status not in (StepStatus.PENDING, StepStatus.RUNNING):
             raise ValueError("Step is already terminal")
         if status == StepStatus.COMPLETED and step.status != StepStatus.RUNNING:
@@ -111,14 +112,13 @@ class StepEventRecorder:
             self.manager.start(step)
             return
         step = self.manager.load(run, event.step_id)
-        match event.type:
-            case EngineEventType.STEP_COMPLETED:
-                self.manager.complete(step)
-            case EngineEventType.STEP_FAILED:
-                self.manager.fail(step, event.error or "Step failed")
-            case EngineEventType.STEP_INTERRUPTED:
-                self.manager.interrupt(step)
-            case EngineEventType.STEP_CANCELLED:
-                self.manager.cancel(step)
-            case _:
-                raise ValueError("Unknown Step event")
+        if event.type == EngineEventType.STEP_COMPLETED:
+            self.manager.complete(step)
+        elif event.type == EngineEventType.STEP_FAILED:
+            self.manager.fail(step, event.error or "Step failed")
+        elif event.type == EngineEventType.STEP_INTERRUPTED:
+            self.manager.interrupt(step)
+        elif event.type == EngineEventType.STEP_CANCELLED:
+            self.manager.cancel(step)
+        else:
+            raise ValueError("Unknown Step event")

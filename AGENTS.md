@@ -301,13 +301,15 @@ Each subsystem owns the structure beneath its own root directory.
 
 ## Code Style
 
-Target Python 3.12 or newer.
+Target Python 3.9 or newer. Maintain compatibility with Python 3.9.13 and newer
+3.9 patch releases as requested by the user. Use `ish.compat` for version-specific
+APIs; run tests with both Python 3.9 and the available modern interpreter.
 
 Use:
 
 * type hints
 * dataclasses
-* slots=True where appropriate
+* slots=True where appropriate (native slots on 3.10+, regular dataclasses on 3.9)
 * StrEnum for persisted enum values
 * pathlib.Path
 * async/await for runtime execution

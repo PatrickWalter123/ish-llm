@@ -1,3 +1,4 @@
+from ish.compat import timeout
 import asyncio
 import json
 import logging
@@ -10,6 +11,7 @@ from unittest.mock import patch
 
 from ish.core.models import MessageRole, MessageStatus, ProjectConfig, TaskStatus
 from ish.core.paths import ProjectPaths, TaskPaths
+from ish.compat import is_junction
 from ish.engines.base import EngineRegistry
 from ish.services.conversation import ConversationStore
 from ish.services.deletion import remove_owned_tree
@@ -134,9 +136,9 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(self.task.paths.conversation.exists())
 
     def test_junction_target_preflight_rejects_before_removal(self) -> None:
-        original = Path.is_junction
-        with patch.object(Path, "is_junction",
-                          lambda path: path == self.task.paths.root or original(path)):
+        redirected = lambda path: path == self.task.paths.root or is_junction(path)
+        with patch("ish.services.deletion.is_junction", side_effect=redirected), \
+                patch("ish.services.logging.is_junction", side_effect=redirected):
             with self.assertWarns(RuntimeWarning):
                 with self.assertRaises(ValueError):
                     self.tasks.delete(self.task, permanent=True)
@@ -240,7 +242,7 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         self.registry.register("blocked", FakeStreamingEngine(gate=asyncio.Event()))
         await self.manager.submit(self.project, self.task, "private-prompt", engine="blocked")
-        async with asyncio.timeout(10):
+        async with timeout(10):
             while not any(message.status == MessageStatus.STREAMING and message.content
                           for message in ConversationStore(self.task.paths.conversation).list()):
                 await asyncio.sleep(0.001)
