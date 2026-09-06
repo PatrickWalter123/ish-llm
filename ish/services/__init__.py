@@ -1,0 +1,1 @@
+"""Persistence and lifecycle orchestration."""

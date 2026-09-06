@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ish"
+version = "0.1.0"
+description = "Durable task and engine foundation for an AI TUI client"
+requires-python = ">=3.12"
+dependencies = ["litellm>=1.100,<2", "jsonschema>=4.23,<5"]
+
+[tool.setuptools.packages.find]
+include = ["ish*"]
