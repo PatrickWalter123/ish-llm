@@ -21,14 +21,14 @@ implements the domain and persistence/runtime foundation described below:
 * `ish/services/projects.py`: ProjectRepository and ProjectManager with delegated initialization and Task lifecycle coordination
 * `ish/services/tasks.py`: TaskRepository metadata persistence, TaskManager lifecycle/conversation snapshot cloning, and runtime-only TaskRuntime definition
 * `ish/services/conversation.py`: append-only JSONL conversation events
-* `ish/services/conversation_context.py`: shared conversation ordering and Run/clone snapshots
+* `ish/services/context.py`: shared conversation ordering and Run/clone snapshots
 * `ish/services/access.py`: authoritative Project loading and lifecycle/ownership checks
-* `ish/services/events.py`: best-effort display notifications after persistence
-* `ish/services/runs.py`: RunRepository metadata persistence and RunManager ownership of TaskRuntime queues/orchestration/recovery
+* `ish/services/runs.py`: RunRepository persistence, RunEventPublisher notifications, and RunManager ownership of TaskRuntime queues/orchestration/recovery
 * `ish/services/steps.py`: StepRepository metadata persistence, StepManager lifecycle, and StepEventRecorder translation
 * `ish/services/secrets.py`: environment-backed credential resolution via `env:NAME` references
 * `ish/services/logging.py`: domain-scoped rotating operational logging
-* `ish/services/deletion.py`: validated removal of owned directory trees
+* `ish/services/storage.py`: atomic JSON helpers, validated directory removal, StorageIO background execution, and cancellation draining
+* `ish/services/locking.py`: workspace OS ownership, shared attachment guards, and scoped transaction locking
 * `tests/support/fake_engine.py`: deterministic test fixture, excluded from the product package
 * `ish/demo.py`: a one-request streaming CLI example with an optional arithmetic tool
 
@@ -164,6 +164,50 @@ package dependencies. It needs no live API or credentials and includes an
 actual subprocess crash/restart test plus an installed LiteLLM SDK test using
 mock HTTP SSE and a local test tokenizer. The sections below describe the broader target architecture;
 features beyond the scope above remain planned.
+
+## Service Module Organization
+
+Services are grouped by domain or shared responsibility. There are 11 functional
+modules plus `__init__.py`:
+
+| Module | Responsibility |
+| --- | --- |
+| `projects.py` | ProjectRepository, ProjectManager, component initialization coordination |
+| `tasks.py` | TaskRepository, TaskManager, runtime-only TaskRuntime definition |
+| `runs.py` | RunRepository, RunManager, separate RunEventPublisher class |
+| `steps.py` | StepRepository, StepManager, StepEventRecorder |
+| `conversation.py` | Append-only conversation persistence and its incremental projection |
+| `context.py` | ConversationContextBuilder: Run history selection and clone ordering |
+| `access.py` | ProjectReader protocol and shared ProjectAccess lifecycle checks |
+| `storage.py` | JSON serialization/fsync, validated removal, ordered background I/O |
+| `locking.py` | OS workspace ownership and local synchronization |
+| `logging.py` | Safe operational log routing and rotation |
+| `secrets.py` | SecretResolver and environment-backed SecretManager |
+
+`conversation_context.py` was renamed to `context.py`; the explicit class name
+ConversationContextBuilder is retained, distinct from engines.base.EngineContext.
+Conversation projection remains in conversation.py; context selection policy has
+no storage dependency.
+
+The former io.py and deletion.py are consolidated into storage.py, with separate
+sections for primitives, owned-tree removal, and background execution. The former
+events.py contained only RunEventPublisher, which now lives in runs.py as its own
+class; notification handling is not folded into RunManager methods. These moves
+do not change domain responsibilities, lock lifetimes, cancellation, or formats.
+
+Keep access.py independent: both ProjectManager and TaskManager use it, and moving
+it into projects.py would introduce a Task-to-Project service dependency cycle.
+Keep locking.py independent of storage.py so OS ownership remains usable without
+coupling its implementation to disk serialization or async I/O orchestration.
+Logging and secrets also retain their independent consumers and responsibilities.
+
+Imports must use the new modules; no forwarding files remain for removed modules:
+
+```python
+from ish.services.context import ConversationContextBuilder
+from ish.services.storage import StorageIO, remove_owned_tree
+from ish.services.runs import RunEventPublisher
+```
 
 ## Repository and Manager Responsibilities
 

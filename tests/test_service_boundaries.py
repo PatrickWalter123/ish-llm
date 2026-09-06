@@ -16,7 +16,7 @@ from ish.core.paths import ProjectPaths, TaskPaths
 from ish.engines.base import EngineEvent, EngineEventType, EngineRegistry
 from ish.engines.loop import LoopEngine
 from ish.services.conversation import ConversationStore
-from ish.services.conversation_context import ConversationContextBuilder
+from ish.services.context import ConversationContextBuilder
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager
 from ish.services.storage import atomic_json, read_json

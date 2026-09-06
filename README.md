@@ -59,8 +59,8 @@ streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
 
-Latest verification: all 125 tests passed on both Python 3.9.13 (90.655 seconds,
-LiteLLM 1.80.17) and Python 3.13.7 (86.721 seconds, LiteLLM 1.100.0). Both SDK
+Latest verification: all 125 tests passed on both Python 3.9.13 (62.723 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (74.111 seconds, LiteLLM 1.100.0). Both SDK
 versions passed the actual SDK/mock SSE test. These results cover the installed
 interpreters; Python 3.9.25 was not separately executed. The test outputs are
 `test-results-python39.txt` and `test-results-python313.txt`.
@@ -193,6 +193,14 @@ steps = StepManager(repository=StepRepository())
 manager = RunManager(tasks, engines, repository=RunRepository(), steps=steps)
 ```
 
+Service modules are grouped by responsibility. Conversation context now uses
+`ish.services.context.ConversationContextBuilder`. `StorageIO` and
+`remove_owned_tree` are in `ish.services.storage`; `RunEventPublisher` is a separate
+class in `ish.services.runs`. The old conversation_context.py, io.py, deletion.py,
+and events.py import paths were removed. Domain managers/repositories, access,
+locking, logging, and secrets retain their own modules. See the service module
+table in `docs/architecture.md` for the complete layout.
+
 RunManager is now imported from `ish.services.runs`; `ish.services.run_manager`
 has been removed. The previous `runs=` constructor argument and `.runs` attribute
 remain aliases for the Run repository. Message events still use ConversationStore.
@@ -220,7 +228,7 @@ Project/Task CRUD methods are synchronous. From an async UI, offload them throug
 the ownership-aware adapter:
 
 ```python
-from ish.services.io import StorageIO
+from ish.services.storage import StorageIO
 
 storage = StorageIO(projects.ownership)
 project = await storage.run(projects.create, "My project")

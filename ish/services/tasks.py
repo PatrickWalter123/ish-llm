@@ -8,12 +8,11 @@ from collections.abc import Callable
 from ish.core.models import Project, Task, TaskStatus, new_id
 from ish.core.paths import ProjectPaths, TaskPaths
 from .conversation import ConversationStore, conversation_store
-from .conversation_context import ConversationContextBuilder
+from .context import ConversationContextBuilder
 from .access import ProjectAccess
 from .locking import workspace_locked
-from .deletion import remove_owned_tree
 from .logging import log_event
-from .storage import atomic_json, child, read_json, record
+from .storage import atomic_json, child, read_json, record, remove_owned_tree
 
 
 @dataclass(slots=True)

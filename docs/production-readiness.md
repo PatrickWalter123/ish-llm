@@ -1,6 +1,6 @@
 # Production readiness assessment
 
-Assessed 2026-09-07 after workspace locking and storage I/O changes.
+Assessed 2026-09-07 after workspace locking, storage I/O, and service module consolidation.
 
 ## Decision
 
@@ -26,8 +26,8 @@ Python 3.13.7 / LiteLLM 1.100.0:
 .\.venv39\Scripts\python.exe -m ish.demo --help
 ```
 
-All 125 tests passed on Python 3.9.13 in 90.655 seconds and on Python 3.13.7 in
-86.721 seconds. Compilation, dependency consistency, and demo import/argument
+All 125 tests passed on Python 3.9.13 in 62.723 seconds and on Python 3.13.7 in
+74.111 seconds. Compilation, dependency consistency, and demo import/argument
 parsing passed. Full suite outputs are `test-results-python39.txt` and
 `test-results-python313.txt` at the repository root. Tests use temporary directories and
 do not delete real application workspaces.

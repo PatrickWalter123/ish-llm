@@ -1,4 +1,4 @@
-"""Conversation ordering and snapshots, independent of storage and Engines."""
+"""Build conversation context for Runs and clones, independent of storage."""
 
 from copy import deepcopy
 

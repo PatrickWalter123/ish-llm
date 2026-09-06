@@ -10,14 +10,14 @@ from ish.core.models import (
 from ish.core.paths import RunPaths
 from ish.engines.base import EngineContext, EngineEvent, EngineEventType, EngineRegistry
 from .conversation import ConversationStore
-from .conversation_context import ConversationContextBuilder
-from .events import RunEventPublisher
+from .context import ConversationContextBuilder
 from ish.components.registry import CapabilityResolver, ComponentRegistry
 from .steps import StepEventRecorder, StepManager
-from .storage import atomic_json, child, read_json, record
+from .storage import (
+    StorageIO, atomic_json, child, drain_on_cancel, read_json, record,
+)
 from .tasks import TaskManager, TaskRuntime
 from .logging import log_event
-from .io import StorageIO, drain_on_cancel
 
 
 class RunRepository:
@@ -42,6 +42,20 @@ class RunRepository:
         return sorted((self.load(task, path.parent.name)
                        for path in task.paths.runs.glob("*/run.json")),
                       key=lambda run: (run.created_at, run.id))
+
+
+class RunEventPublisher:
+    def __init__(self, callback: Optional[Callable[[Run, EngineEvent], None]] = None) -> None:
+        self.callback = callback
+
+    def publish(self, run: Run, event: EngineEvent) -> None:
+        # UI callbacks must be synchronous and nonblocking. Persistence has
+        # already succeeded; a display exception must not fail the Engine.
+        if self.callback is not None:
+            try:
+                self.callback(deepcopy(run), deepcopy(event))
+            except Exception:
+                log_event(run.paths.logs, "observer.failed", entity_id=run.id)
 
 
 class RunManager:

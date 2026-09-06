@@ -13,7 +13,7 @@ from unittest.mock import patch
 from ish.core.models import MessageRole, MessageStatus, ProjectConfig, RunStatus
 from ish.engines.base import EngineRegistry
 from ish.services.conversation import ConversationStore
-from ish.services.io import StorageIO
+from ish.services.storage import StorageIO
 from ish.services.locking import WorkspaceBusyError, WorkspaceOwnership
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager

@@ -14,7 +14,7 @@ from ish.core.paths import ProjectPaths, TaskPaths
 from ish.compat import is_junction
 from ish.engines.base import EngineRegistry
 from ish.services.conversation import ConversationStore
-from ish.services.deletion import remove_owned_tree
+from ish.services.storage import remove_owned_tree
 from ish.services.logging import _RaisingFileHandler, log_event
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager
@@ -89,7 +89,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(self.task.paths.root.exists())
 
     def test_failed_removal_does_not_report_success_or_mark_deleted(self) -> None:
-        with patch("ish.services.deletion.shutil.rmtree", side_effect=PermissionError):
+        with patch("ish.services.storage.shutil.rmtree", side_effect=PermissionError):
             with self.assertRaises(PermissionError):
                 self.tasks.delete(self.task, permanent=True)
         self.assertEqual(self.task.status, TaskStatus.IDLE)
@@ -137,7 +137,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_junction_target_preflight_rejects_before_removal(self) -> None:
         redirected = lambda path: path == self.task.paths.root or is_junction(path)
-        with patch("ish.services.deletion.is_junction", side_effect=redirected), \
+        with patch("ish.services.storage.is_junction", side_effect=redirected), \
                 patch("ish.services.logging.is_junction", side_effect=redirected):
             with self.assertWarns(RuntimeWarning):
                 with self.assertRaises(ValueError):

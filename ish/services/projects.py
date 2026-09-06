@@ -6,9 +6,8 @@ from typing import Protocol
 
 from ish.core.models import Project, ProjectConfig, new_id
 from ish.core.paths import ProjectPaths
-from .storage import atomic_json, child, read_json, record
+from .storage import atomic_json, child, read_json, record, remove_owned_tree
 from .tasks import TaskManager
-from .deletion import remove_owned_tree
 from .logging import log_event
 from .access import ProjectAccess
 from .locking import WorkspaceOwnership, workspace_locked

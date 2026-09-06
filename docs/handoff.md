@@ -6,7 +6,25 @@ Continue development of a production-oriented Linux TUI AI client built with Pyt
 
 Read `AGENTS.md` and `docs/architecture.md` before making architectural changes.
 
-## Latest: workspace locking and storage I/O (2026-09-07)
+## Latest: service module consolidation (2026-09-07)
+
+* Renamed conversation_context.py to context.py, retaining ConversationContextBuilder.
+* Merged io.py (StorageIO/drain_on_cancel) and deletion.py (remove_owned_tree)
+  into storage.py. Sections distinguish metadata primitives, deletion, and async I/O.
+* Moved RunEventPublisher from events.py into runs.py as a separate class.
+* Updated implementation/test imports, patch targets, and README examples. Removed
+  the old modules; there are 11 functional modules plus services/__init__.py.
+* Kept access.py to avoid a ProjectManager/TaskManager dependency cycle, and kept
+  locking/logging/secrets separate because they have distinct shared responsibilities.
+* AST comparison verified that all 10 moved/existing storage/context/publisher
+  definitions retain identical implementations. Execution and persistence formats
+  are unchanged; use the new import paths documented in architecture.md.
+
+Final validation: 125 tests passed on Python 3.9.13 (62.723 seconds) and Python
+3.13.7 (74.111 seconds). Compile checks and fresh imports passed on both versions.
+Outputs are test-results-python39.txt and test-results-python313.txt.
+
+## Previous: workspace locking and storage I/O (2026-09-07)
 
 * WorkspaceOwnership uses stable `<projects-root>/.ish.lock` with nonblocking OS
   locks (Windows byte-range/POSIX flock). Lifecycle transactions are guarded;
