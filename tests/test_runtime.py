@@ -7,13 +7,13 @@ import unittest
 from pathlib import Path
 
 from ish.core.models import (
-    MessageRole, MessageStatus, Run, RunStatus, StepStatus, TaskStatus, new_id,
+    MessageRole, MessageStatus, ProjectConfig, Run, RunStatus, StepStatus, TaskStatus, new_id,
 )
 from ish.engines.base import EngineEvent, EngineEventType, EngineRegistry
-from ish.engines.fake import FakeStreamingEngine
+from tests.support.fake_engine import FakeStreamingEngine
 from ish.services.conversation import ConversationStore
 from ish.services.projects import ProjectManager, ProjectRepository
-from ish.services.run_manager import RunManager
+from ish.services.runs import RunManager
 from ish.services.tasks import TaskManager
 
 
@@ -24,7 +24,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.root = Path(self.temporary.name)
         self.tasks = TaskManager()
         self.projects = ProjectManager(ProjectRepository(self.root / "projects"), self.tasks)
-        self.project = self.projects.create("Project")
+        self.project = self.projects.create("Project", config=ProjectConfig(default_engine="fake"))
         self.task = self.tasks.create(self.project, "Task")
         self.store = ConversationStore(self.task.paths.conversation)
         self.engine = FakeStreamingEngine()
@@ -263,10 +263,10 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             import asyncio, os, sys
             from pathlib import Path
             from ish.engines.base import EngineRegistry
-            from ish.engines.fake import FakeStreamingEngine
+            from tests.support.fake_engine import FakeStreamingEngine
             from ish.services.projects import ProjectManager, ProjectRepository
             from ish.services.tasks import TaskManager
-            from ish.services.run_manager import RunManager
+            from ish.services.runs import RunManager
             async def main():
                 tasks = TaskManager()
                 projects = ProjectManager(ProjectRepository(Path(sys.argv[1])), tasks)
@@ -345,7 +345,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.manager.runs.list(self.task)[0].engine, "mutating")
 
     async def test_deleted_task_and_wrong_project_are_rejected(self) -> None:
-        self.tasks.soft_delete(self.task)
+        self.tasks.delete(self.task)
         with self.assertRaises(ValueError):
             await self.manager.submit(self.project, self.task, "rejected")
         self.assertEqual(self.store.list(), [])

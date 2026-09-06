@@ -9,9 +9,9 @@ from typing import Any
 from ish.core.models import ProjectConfig, Run, RunStatus
 from ish.engines.base import EngineEvent, EngineEventType, EngineRegistry
 from ish.engines.loop import LoopEngine, LoopOptions
-from ish.engines.tools import Tool, ToolRegistry
+from ish.components.tools import Tool, ToolRegistry
 from ish.services.projects import ProjectManager, ProjectRepository
-from ish.services.run_manager import RunManager
+from ish.services.runs import RunManager
 from ish.services.tasks import TaskManager
 
 

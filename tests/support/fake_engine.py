@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from ish.core.models import new_id
-from .base import EngineContext, EngineEvent, EngineEventType
+from ish.engines.base import EngineContext, EngineEvent, EngineEventType
 
 
 class FakeStreamingEngine:

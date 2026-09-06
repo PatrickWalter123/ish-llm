@@ -63,7 +63,46 @@ provider-specific compatibility tests, and TUI integration. A dedicated
 SingleEngine and GraphEngine remain unimplemented. The broader original
 milestone below therefore remains partially outstanding.
 
+## Repository Consistency Refactor
+
+RunManager now lives alongside RunRepository in `ish/services/runs.py`.
+TaskRuntime is defined in `ish/services/tasks.py`, with scheduling still owned
+by RunManager. The former `run_manager.py` file was removed, and source,
+test, demo, and README imports use `from ish.services.runs import RunManager`.
+
+TaskRepository and StepRepository were added to their respective service modules.
+TaskManager and StepManager delegate JSON persistence, path resolution, and
+listing to these repositories. Lifecycle behavior remains in the managers;
+TaskManager's active-Run guard reloads through TaskRepository. All four metadata
+domains now have a Repository/Manager pair. ConversationStore keeps its
+append-only Message event format, and Engine remains persistence-independent.
+
+TaskManager/StepManager accept optional `repository=` injection. RunManager also
+exposes `repository=`, while retaining `runs=` and `.runs` for existing callers.
+The persisted formats, paths, and runtime/recovery behavior are unchanged.
+Additional tests cover repository injection without metadata files, ownership
+checks, round trips, task filtering, and duplicate Step IDs.
+
 ## Current Architecture
+
+Latest organization/lifecycle changes:
+
+* Removed `ish/engines/fake.py`; deterministic tests use `tests/support/fake_engine.py`.
+* Moved Tool/ToolRegistry to `ish/components/tools` and provider transport to `ish/providers/litellm.py`.
+* Reserved `components/rag`, `mcp`, `skills`, `subagents`, and `workflows` for future CRUD/adapters; no CRUD implementations are claimed for these packages.
+* Categorized comments in core models; new ProjectConfig defaults to `loop`.
+* Renamed Project/Task `soft_delete` to `delete(..., permanent=False)`, with guarded permanent removal and parent-scope deletion logging.
+* Shared TaskManager tracks runtime attachment; shut down RunManager before lifecycle deletion/cloning. This is not a cross-process lock.
+* Services write safe structured, rotating `logs/service.log` files in Project/Task/Run/Step scopes using standard-library logging.
+* Added regression coverage for permanent deletion, stale restore, ownership and linked-path rejection, runtime attachment, safe log content, rotation, and logging failures.
+
+Persisted formats are unchanged. Explicit old `fake` engine selections must be
+updated by the caller for real execution. Production limitations and next steps
+are recorded in `docs/production-readiness.md`.
+
+Final validation: 81 tests passed in 47.356 seconds on Windows / Python 3.13.7.
+Compilation, `pip check`, and demo help/import checks passed. No live model API
+was used; Linux and production-load verification remain outstanding.
 
 The intended hierarchy is:
 

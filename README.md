@@ -1,7 +1,7 @@
 # ish
 
 Durable execution foundation for a Python 3.12+ AI TUI client. Includes a
-deterministic FakeStreamingEngine and a LiteLLM LoopEngine that streams text,
+LiteLLM LoopEngine that streams text,
 executes explicitly registered tools, and continues until a final answer.
 There is no TUI yet.
 
@@ -68,7 +68,7 @@ LoopEngine passes `stream=True`, a timeout, and `num_retries=0` to
 `litellm.completion`. It forwards content deltas immediately, assembles indexed
 tool-call fragments, validates the complete batch against registered JSON
 schemas, executes async tool handlers serially, and includes their results in
-the next completion. Register tools through `ish.engines.tools.ToolRegistry`;
+the next completion. Register tools through `ish.components.tools.ToolRegistry`;
 handlers receive an argument dictionary and return text or JSON-compatible data.
 Handlers must avoid blocking the event loop and propagate cancellation.
 
@@ -106,21 +106,24 @@ API references: [LiteLLM streaming](https://docs.litellm.ai/docs/completion/stre
 import asyncio
 from pathlib import Path
 
+from ish.core.models import ProjectConfig
 from ish.engines.base import EngineRegistry
-from ish.engines.fake import FakeStreamingEngine
+from ish.engines.loop import LoopEngine
 from ish.services.conversation import ConversationStore
 from ish.services.projects import ProjectManager, ProjectRepository
-from ish.services.run_manager import RunManager
+from ish.services.runs import RunManager
 from ish.services.tasks import TaskManager
 
 
 async def main() -> None:
     tasks = TaskManager()
     projects = ProjectManager(ProjectRepository(Path("./workspace/projects")), tasks)
-    project = projects.create("Example")
+    project = projects.create("Example", config=ProjectConfig(
+        model="openai/gpt-4o-mini", temperature=None,
+        credential_ref="env:OPENAI_API_KEY"))
     task = tasks.create(project, "Conversation")
     engines = EngineRegistry()
-    engines.register("fake", FakeStreamingEngine(delay=0.01))
+    engines.register("loop", LoopEngine())
     manager = RunManager(tasks, engines)
     try:
         await manager.submit(project, task, "Hello")
@@ -138,6 +141,28 @@ On restart, load the Project and Task through their managers, then call
 `await manager.start(project, task)`. This interrupts stale state and restores
 only queued requests. Calling `start` again on an already attached Task is safe.
 
+Project, Task, Run, and Step metadata each use a Repository/Manager pair in
+`ish.services.projects`, `tasks`, `runs`, and `steps`. Repositories handle storage;
+managers handle lifecycle or execution. TaskManager and StepManager create a
+default repository unless one is injected:
+
+```python
+from ish.services.tasks import TaskManager, TaskRepository
+from ish.services.steps import StepManager, StepRepository
+from ish.services.runs import RunManager, RunRepository
+
+tasks = TaskManager(repository=TaskRepository())
+steps = StepManager(repository=StepRepository())
+manager = RunManager(tasks, engines, repository=RunRepository(), steps=steps)
+```
+
+RunManager is now imported from `ish.services.runs`; `ish.services.run_manager`
+has been removed. The previous `runs=` constructor argument and `.runs` attribute
+remain aliases for the Run repository. Message events still use ConversationStore.
+Persisted formats are unchanged. New Projects default to `loop`; previously
+saved `fake` engine selections must be changed explicitly before real execution.
+The deterministic fake engine now exists only in `tests/support/fake_engine.py`.
+
 Use one RunManager per workspace, in one process and event loop. Shutdown the
 manager before cloning, deleting, or restoring its Tasks/Projects. Metadata
 writes and conversation appends flush synchronously; high-volume persistence
@@ -149,5 +174,53 @@ history and artifacts are not copied. Project clones copy configuration and
 active Task snapshots through TaskManager. Soft deletion marks metadata in
 place and retains the stored files.
 
+## Delete and restore
+
+After `await manager.shutdown()`, use the lifecycle APIs:
+
+```python
+tasks.delete(task)                         # reversible, history retained
+tasks.restore(task)
+projects.delete(project)                   # reversible, Tasks retained
+projects.restore(project)
+
+tasks.delete(task, permanent=True)         # removes Task + history/Runs/Steps/files
+projects.delete(project, permanent=True)   # removes Project + all its Tasks/files
+```
+
+`soft_delete` was renamed to `delete`. `permanent` is keyword-only and defaults
+to `False`. Permanent deletion cannot be restored through `restore`. Active
+persisted Runs and runtimes attached through the shared TaskManager block
+deletion, including idle workers and queued input. Paths and ownership are
+checked before removal; linked paths/descendants are rejected. This assumes
+exclusive filesystem ownership; it is not protection against concurrent writers.
+
+## Package boundaries and logs
+
+`ish/engines` contains execution strategies and the Engine contract. LoopEngine
+is implemented; SingleEngine and GraphEngine remain planned. Reusable Tool and
+ToolRegistry live in `ish/components/tools`, alongside reserved `rag`, `mcp`,
+`skills`, `subagents`, and `workflows` packages for future component CRUD and
+runtime adapters. These reserved packages do not yet implement CRUD. Provider
+stream transport lives in `ish/providers/litellm.py`. TaskRuntime lives in
+`ish/services/tasks.py` and is owned and scheduled by RunManager.
+
+Services write structured operational JSON lines through Python `logging` and
+`RotatingFileHandler`. Each Project, Task, Run, and Step owns
+`logs/service.log`, with up to three 1 MiB backups. Conversation operations and
+runtime scheduling log to Task; Run/Step lifecycle operations log to their
+respective domains. Environment credential resolution uses Project logs when
+LoopEngine constructs SecretManager, or `SecretManager(log_dir=project.paths.logs)`.
+Unscoped/custom secret resolvers are responsible for their own diagnostics.
+
+Only event names, IDs, statuses, counts, and deletion flags are recorded;
+prompts, answers, titles, arbitrary metadata, references, and secret values are
+excluded. Log files are separate from durable conversation JSONL. Handlers are
+closed after writes, and log I/O failures emit a sanitized warning. Operational
+logs are best effort, not a transactional audit log. Permanent Task deletion
+leaves its final deletion record in Project logs; permanent Project deletion
+leaves it in the projects root's `logs/service.log`.
+
 See [architecture](docs/architecture.md) for boundaries and
-[handoff](docs/handoff.md) for implemented scope and next steps.
+[handoff](docs/handoff.md) for implemented scope and next steps. See the
+[production readiness assessment](docs/production-readiness.md) before deployment.

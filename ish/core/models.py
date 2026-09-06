@@ -6,6 +6,9 @@ from uuid import uuid4
 from .paths import ProjectPaths, RunPaths, StepPaths, TaskPaths
 
 
+# ---------------------------------------------------------------------------
+# Shared identity and UTC timestamp helpers
+# ---------------------------------------------------------------------------
 def new_id() -> str:
     return uuid4().hex
 
@@ -13,6 +16,10 @@ def new_id() -> str:
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+# ---------------------------------------------------------------------------
+# Persisted roles and lifecycle states
+# ---------------------------------------------------------------------------
 
 class TaskStatus(StrEnum):
     IDLE = "idle"
@@ -54,11 +61,15 @@ class StepStatus(StrEnum):
     FAILED = "failed"
 
 
+# ---------------------------------------------------------------------------
+# Project: persistent workspace and provider configuration
+# ---------------------------------------------------------------------------
+
 @dataclass(slots=True)
 class ProjectConfig:
     model: str = ""
     temperature: float | None = 0.7
-    default_engine: str = "fake"
+    default_engine: str = "loop"
     # Only a reference may be stored here; actual credentials need SecretManager.
     credential_ref: str | None = None
     api_base: str | None = None
@@ -74,6 +85,10 @@ class Project:
     deleted: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Task: long-lived session state (runtime asyncio objects live in services)
+# ---------------------------------------------------------------------------
+
 @dataclass(slots=True)
 class Task:
     id: str
@@ -87,6 +102,10 @@ class Task:
     metadata: dict = field(default_factory=dict)
 
 
+# ---------------------------------------------------------------------------
+# Message: Task conversation state reconstructed from JSONL events
+# ---------------------------------------------------------------------------
+
 @dataclass(slots=True)
 class Message:
     id: str
@@ -97,6 +116,10 @@ class Message:
     created_at: str = field(default_factory=now)
     metadata: dict = field(default_factory=dict)
 
+
+# ---------------------------------------------------------------------------
+# Run: one Engine execution for one committed request
+# ---------------------------------------------------------------------------
 
 @dataclass(slots=True)
 class Run:
@@ -113,6 +136,10 @@ class Run:
     error: str | None = None
     metadata: dict = field(default_factory=dict)
 
+
+# ---------------------------------------------------------------------------
+# Step: observable execution unit inside a Run
+# ---------------------------------------------------------------------------
 
 @dataclass(slots=True)
 class Step:

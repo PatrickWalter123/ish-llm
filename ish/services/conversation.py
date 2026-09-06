@@ -4,6 +4,8 @@ from copy import deepcopy
 from pathlib import Path
 
 from ish.core.models import Message, MessageRole, MessageStatus, new_id
+from ish.core.paths import TaskPaths
+from .logging import log_event
 from .storage import record, sync_directory
 
 
@@ -49,6 +51,10 @@ class ConversationStore:
             stream.flush()
             os.fsync(stream.fileno())
         sync_directory(self.path.parent)
+        message = event.get("message", {})
+        log_event(TaskPaths(self.path.parent).logs, event["type"],
+                  entity_id=event.get("id", message.get("id")),
+                  status=event.get("status", message.get("status")))
 
     def list(self) -> list[Message]:
         messages: dict[str, Message] = {}

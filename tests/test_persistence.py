@@ -97,12 +97,12 @@ class PersistenceTests(unittest.TestCase):
 
     def test_soft_delete_restore_preserves_history(self) -> None:
         user = self.store.create(MessageRole.USER, "queued", MessageStatus.QUEUED)
-        self.tasks.soft_delete(self.task)
+        self.tasks.delete(self.task)
         self.assertEqual(self.tasks.list(self.project), [])
         self.assertEqual(len(self.tasks.list(self.project, include_deleted=True)), 1)
         self.tasks.restore(self.task)
         self.assertEqual(self.store.get(user.id).status, MessageStatus.QUEUED)
-        self.projects.soft_delete(self.project)
+        self.projects.delete(self.project)
         self.assertEqual(self.projects.list(), [])
         with self.assertRaises(ValueError):
             self.tasks.create(self.project, "Rejected")
@@ -136,13 +136,13 @@ class PersistenceTests(unittest.TestCase):
         self.task.current_run_id = new_id()
         self.tasks.save(self.task)
         with self.assertRaises(ValueError):
-            self.tasks.soft_delete(stale_handle)
+            self.tasks.delete(stale_handle)
         with self.assertRaises(ValueError):
             self.tasks.clone(stale_handle, self.project)
         with self.assertRaises(ValueError):
             self.projects.clone(self.project)
         with self.assertRaises(ValueError):
-            self.projects.soft_delete(self.project)
+            self.projects.delete(self.project)
 
     def test_step_events_and_recovery(self) -> None:
         runs = RunRepository()

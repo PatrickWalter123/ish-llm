@@ -13,8 +13,8 @@ from urllib.parse import urlsplit
 from ish.core.models import MessageRole, MessageStatus, new_id
 from ish.services.secrets import SecretManager, SecretResolver
 from .base import EngineContext, EngineEvent, EngineEventType
-from .litellm_stream import completion, stream_completion
-from .tools import ToolRegistry
+from ish.providers.litellm import completion, stream_completion
+from ish.components.tools import ToolRegistry
 
 
 class LoopEngineError(RuntimeError):
@@ -137,7 +137,7 @@ class LoopEngine:
                  options: LoopOptions | None = None,
                  completion_fn: Callable[..., Iterator[Any]] = completion) -> None:
         self.tools = tools or ToolRegistry()
-        self.secrets = secrets or SecretManager()
+        self.secrets = secrets
         self.options = options or LoopOptions()
         self.completion_fn = completion_fn
 
@@ -161,7 +161,9 @@ class LoopEngine:
             request["api_base"] = config.api_base
         if config.credential_ref is not None:
             try:
-                request["api_key"] = self.secrets.resolve(config.credential_ref)
+                resolver = self.secrets if self.secrets is not None else SecretManager(
+                    log_dir=context.project.paths.logs)
+                request["api_key"] = resolver.resolve(config.credential_ref)
             except Exception:
                 raise LoopEngineError("Credential could not be resolved") from None
         definitions = self.tools.definitions()

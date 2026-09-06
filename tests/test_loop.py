@@ -14,13 +14,13 @@ from unittest.mock import patch
 
 from ish.core.models import MessageStatus, ProjectConfig, RunStatus, StepStatus
 from ish.engines.base import EngineEventType, EngineRegistry
-from ish.engines.fake import FakeStreamingEngine
+from tests.support.fake_engine import FakeStreamingEngine
 from ish.engines.loop import LoopEngine, LoopOptions
-from ish.engines.litellm_stream import stream_completion
-from ish.engines.tools import Tool, ToolRegistry
+from ish.providers.litellm import stream_completion
+from ish.components.tools import Tool, ToolRegistry
 from ish.services.conversation import ConversationStore
 from ish.services.projects import ProjectManager, ProjectRepository
-from ish.services.run_manager import RunManager
+from ish.services.runs import RunManager
 from ish.services.secrets import SecretManager
 from ish.services.tasks import TaskManager
 
