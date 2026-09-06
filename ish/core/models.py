@@ -85,6 +85,8 @@ class Project:
     config: ProjectConfig = field(default_factory=ProjectConfig)
     created_at: str = field(default_factory=now)
     deleted: bool = False
+    # Component identities only. Each component owns its configuration and paths.
+    components: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------

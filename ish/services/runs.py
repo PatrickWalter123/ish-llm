@@ -10,6 +10,9 @@ from ish.core.models import (
 from ish.core.paths import RunPaths
 from ish.engines.base import EngineContext, EngineEvent, EngineEventType, EngineRegistry
 from .conversation import ConversationStore
+from .conversation_context import ConversationContextBuilder
+from .events import RunEventPublisher
+from ish.components.registry import CapabilityResolver, ComponentRegistry
 from .steps import StepEventRecorder, StepManager
 from .storage import atomic_json, child, read_json, record
 from .tasks import TaskManager, TaskRuntime
@@ -47,7 +50,10 @@ class RunManager:
                  runs: Optional[RunRepository] = None,
                  steps: Optional[StepManager] = None,
                  on_event: Optional[Callable[[Run, EngineEvent], None]] = None,
-                 repository: Optional[RunRepository] = None) -> None:
+                 repository: Optional[RunRepository] = None,
+                 capabilities: Optional[CapabilityResolver] = None,
+                 conversations: Optional[Callable[[Task], ConversationStore]] = None,
+                 context_builder: Optional[ConversationContextBuilder] = None) -> None:
         if repository is not None and runs is not None:
             raise ValueError("Specify repository or runs, not both")
         self.tasks = tasks
@@ -56,11 +62,20 @@ class RunManager:
             runs if runs is not None else RunRepository())
         self.steps = steps if steps is not None else StepManager()
         self.recorder = StepEventRecorder(self.steps)
-        # Synchronous observer, invoked after persistence. Keep it nonblocking;
-        # observer errors fail the execution rather than silently losing output.
-        self.on_event = on_event
+        self.events = RunEventPublisher(on_event)
+        self.capabilities = capabilities if capabilities is not None else ComponentRegistry()
+        self.conversations = conversations if conversations is not None else tasks.conversations
+        self.context_builder = context_builder if context_builder is not None else tasks.context_builder
         self._runtimes: dict[tuple[str, str], TaskRuntime] = {}
         self._closed = False
+
+    @property
+    def on_event(self) -> Optional[Callable[[Run, EngineEvent], None]]:
+        return self.events.callback
+
+    @on_event.setter
+    def on_event(self, callback: Optional[Callable[[Run, EngineEvent], None]]) -> None:
+        self.events.callback = callback
 
     @property
     def runs(self) -> RunRepository:
@@ -70,25 +85,29 @@ class RunManager:
     def _runtime(self, project: Project, task: Task) -> TaskRuntime:
         if self._closed:
             raise RuntimeError("RunManager is shut down")
-        if project.deleted or task.project_id != project.id:
+        project = self.tasks.require_project(project)
+        if task.project_id != project.id:
             raise ValueError("Task requires its active owning Project")
+        current = self.tasks.load(project, task.id)
+        if task.paths.root.absolute() != current.paths.root.absolute():
+            raise ValueError("Task path ownership mismatch")
+        if current.status == TaskStatus.DELETED:
+            raise ValueError("Task is deleted")
         key = (project.id, task.id)
         if key in self._runtimes:
             runtime = self._runtimes[key]
             if runtime.worker is not None and runtime.worker.done():
                 runtime.worker.result()
                 raise RuntimeError("Task worker has stopped")
+            runtime.project = deepcopy(project)
             return runtime
-        current = self.tasks.load(project, task.id)
-        if current.status == TaskStatus.DELETED:
-            raise ValueError("Task is deleted")
         # Recovery and queue population are synchronous: submit cannot overtake
         # recovered messages, and duplicate start calls cannot duplicate workers.
         self.tasks.attach_runtime(current)
         try:
             self._recover(current)
             runtime = TaskRuntime(deepcopy(project), current)
-            for message in ConversationStore(current.paths.conversation).list():
+            for message in self.conversations(current).list():
                 if message.role == MessageRole.USER and message.status == MessageStatus.QUEUED:
                     runtime.queue.put_nowait(message.id)
         except BaseException:
@@ -108,7 +127,7 @@ class RunManager:
                      engine: Optional[str] = None) -> Message:
         runtime = self._runtime(project, task)
         selected = engine or runtime.task.default_engine or runtime.project.config.default_engine
-        store = ConversationStore(runtime.task.paths.conversation)
+        store = self.conversations(runtime.task)
         message = store.create(MessageRole.USER, content, MessageStatus.QUEUED,
                                metadata={"engine": selected})
         # There is no await between durable creation and queue insertion.
@@ -168,7 +187,7 @@ class RunManager:
                 raise result
 
     def _recover(self, task: Task) -> None:
-        store = ConversationStore(task.paths.conversation)
+        store = self.conversations(task)
         messages = {message.id: message for message in store.list()}
         for run in self.repository.list(task):
             self.steps.recover(run)
@@ -190,11 +209,12 @@ class RunManager:
                 store.set_status(message.id, MessageStatus.INTERRUPTED)
         task.current_run_id = None
         task.status = TaskStatus.IDLE
-        self.tasks.save(task)
+        self.tasks._save_runtime(task)
 
     def _begin(self, runtime: TaskRuntime, message: Message) -> Run:
+        runtime.project = self.tasks.require_project(runtime.project)
         task = runtime.task
-        store = ConversationStore(task.paths.conversation)
+        store = self.conversations(task)
         run_id = new_id()
         run = Run(run_id, task.id, message.id, new_id(),
                   message.metadata.get("engine") or task.default_engine
@@ -207,7 +227,7 @@ class RunManager:
                      message_id=run.assistant_message_id, run_id=run.id)
         task.current_run_id = run.id
         task.status = TaskStatus.RUNNING
-        self.tasks.save(task)
+        self.tasks._save_runtime(task)
         run.status = RunStatus.RUNNING
         run.started_at = now()
         self.repository.save(run)
@@ -216,31 +236,17 @@ class RunManager:
         return run
 
     def _context(self, runtime: TaskRuntime, run: Run) -> EngineContext:
-        messages = ConversationStore(runtime.task.paths.conversation).list()
-        answers = {message.run_id: message for message in messages
-                   if message.role == MessageRole.ASSISTANT and message.run_id
-                   and message.status in (MessageStatus.COMPLETED, MessageStatus.INTERRUPTED,
-                                          MessageStatus.FAILED)}
-        history = []
-        for message in messages:
-            if message.id == run.input_message_id:
-                history.append(message)
-                break
-            if message.role == MessageRole.USER and message.status == MessageStatus.COMMITTED:
-                history.append(message)
-                if message.run_id in answers:
-                    history.append(answers[message.run_id])
-            elif message.role != MessageRole.USER and message.run_id is None and message.status in (
-                MessageStatus.COMPLETED, MessageStatus.INTERRUPTED, MessageStatus.FAILED,
-            ):
-                history.append(message)
-        # Engines receive snapshots, so engine code cannot mutate service-owned
-        # domain state. Pair by Run because answers may be appended after queues.
-        return deepcopy(EngineContext(runtime.project, runtime.task, run, tuple(history)))
+        history = self.context_builder.for_run(
+            self.conversations(runtime.task).list(), run.input_message_id)
+        # Copy domain state, but do not deepcopy Python handler closures or live
+        # capabilities. The resolver returns a fresh registry for this Run.
+        return EngineContext(deepcopy(runtime.project), deepcopy(runtime.task),
+                             deepcopy(run), history,
+                             self.capabilities.resolve_tools(deepcopy(runtime.project)))
 
     async def _consume(self, runtime: TaskRuntime, run: Run) -> None:
         engine = self.engines.resolve(run.engine)
-        store = ConversationStore(runtime.task.paths.conversation)
+        store = self.conversations(runtime.task)
         events = engine.execute(self._context(runtime, run))
         try:
             async for event in events:
@@ -248,8 +254,7 @@ class RunManager:
                     store.delta(run.assistant_message_id, event.text)
                 else:
                     self.recorder.record(run, event)
-                if self.on_event is not None:
-                    self.on_event(deepcopy(run), deepcopy(event))
+                self.events.publish(run, event)
         finally:
             close = getattr(events, "aclose", None)
             if close is not None:
@@ -266,7 +271,7 @@ class RunManager:
                     self.steps.fail(step, error or "Run failed")
                 else:
                     self.steps.interrupt(step)
-        store = ConversationStore(runtime.task.paths.conversation)
+        store = self.conversations(runtime.task)
         store.set_status(run.assistant_message_id, MessageStatus(status.value))
         run.status = status
         run.error = error
@@ -276,7 +281,7 @@ class RunManager:
                   status=status)
         runtime.task.current_run_id = None
         runtime.task.status = TaskStatus.IDLE
-        self.tasks.save(runtime.task)
+        self.tasks._save_runtime(runtime.task)
 
     async def _worker(self, runtime: TaskRuntime) -> None:
         while not runtime.closed:
@@ -284,7 +289,7 @@ class RunManager:
             try:
                 if runtime.closed or message_id is None:
                     return
-                message = ConversationStore(runtime.task.paths.conversation).get(message_id)
+                message = self.conversations(runtime.task).get(message_id)
                 if message.status != MessageStatus.QUEUED:
                     continue
                 # Set up persistent state before creating the cancellable child.

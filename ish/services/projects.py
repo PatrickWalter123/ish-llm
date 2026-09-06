@@ -10,6 +10,8 @@ from .storage import atomic_json, child, read_json, record
 from .tasks import TaskManager
 from .deletion import remove_owned_tree
 from .logging import log_event
+from .access import ProjectAccess
+from ish.components.registry import ComponentRegistry
 
 
 class ProjectInitializer(Protocol):
@@ -35,7 +37,11 @@ class ProjectRepository:
         if data["id"] != project_id:
             raise ValueError("Project ID mismatch")
         log_event(paths.logs, "project.loaded", entity_id=project_id)
-        return Project(**{**data, "config": ProjectConfig(**data["config"]), "paths": paths})
+        selected = data.get("components", [])
+        if not isinstance(selected, list) or any(not isinstance(name, str) for name in selected):
+            raise ValueError("Invalid Project component selection")
+        return Project(**{**data, "components": tuple(selected),
+                          "config": ProjectConfig(**data["config"]), "paths": paths})
 
     def delete(self, project: Project) -> None:
         """Remove an owned Project tree; lifecycle checks belong to the manager."""
@@ -54,23 +60,53 @@ class ProjectRepository:
 
 class ProjectManager:
     def __init__(self, repository: ProjectRepository, tasks: TaskManager,
-                 initializers: tuple[ProjectInitializer, ...] = ()) -> None:
+                 initializers: tuple[ProjectInitializer, ...] = (), *,
+                 components: Optional[ComponentRegistry] = None) -> None:
         self.repository = repository
         self.tasks = tasks
+        self.access = ProjectAccess(repository)
+        self.tasks.bind_project_access(self.access)
+        self.components = components if components is not None else ComponentRegistry()
         self.initializers = (tasks, *initializers)
 
-    def create(self, title: str, *, config: Optional[ProjectConfig] = None) -> Project:
+    def create(self, title: str, *, config: Optional[ProjectConfig] = None,
+               components: tuple[str, ...] = ()) -> Project:
+        selected = self.components.validate(components)
         project_id = new_id()
         project = Project(project_id, title, self.repository.paths(project_id),
-                          config=deepcopy(config) if config else ProjectConfig())
-        self.save(project)
-        for initializer in self.initializers:
-            initializer.initialize(project)
+                          config=deepcopy(config) if config else ProjectConfig(), components=selected)
+        self.repository.save(project)
+        try:
+            for initializer in self.initializers:
+                initializer.initialize(deepcopy(project))
+            self.components.initialize(project)
+        except Exception:
+            project.deleted = True
+            self.repository.save(project)
+            log_event(project.paths.logs, "project.initialization_failed", entity_id=project.id)
+            raise
         log_event(project.paths.logs, "project.created", entity_id=project.id)
         return project
 
     def save(self, project: Project) -> None:
-        self.repository.save(project)
+        current = self.access.require(project)
+        if project.deleted != current.deleted or project.components != current.components:
+            raise ValueError("Use lifecycle or component APIs to change managed Project state")
+        current.title, current.config = project.title, deepcopy(project.config)
+        self.repository.save(current)
+
+    def set_components(self, project: Project, names: tuple[str, ...]) -> None:
+        current = self.access.require(project)
+        current.components = self.components.validate(names)
+        # Initialization is idempotent. Failed initialization does not publish
+        # the changed selection; existing component data is never removed.
+        self.components.initialize(current)
+        self.repository.save(current)
+        project.components = current.components
+
+    def configure_component(self, project: Project, name: str, configuration: dict) -> None:
+        current = self.access.require(project)
+        self.components.configure(current, name, configuration)
 
     def load(self, project_id: str) -> Project:
         return self.repository.load(project_id)
@@ -82,34 +118,51 @@ class ProjectManager:
         """Mark deleted by default; permanent=True removes the entire owned tree."""
         if type(permanent) is not bool:
             raise TypeError("permanent must be a bool")
-        current = self.load(project.id)
-        if current.paths.root.absolute() != project.paths.root.absolute():
-            raise ValueError("Project path mismatch")
+        current = self.access.require(project, allow_deleted=True)
         for task in self.tasks.list(current, include_deleted=True):
             self.tasks.require_inactive(task)
         if permanent:
             self.repository.delete(current)
         else:
             current.deleted = True
-            self.save(current)
+            self.repository.save(current)
             log_event(current.paths.logs, "project.deleted", entity_id=current.id,
                       permanent=False)
         project.deleted = True
 
     def restore(self, project: Project) -> None:
-        current = self.load(project.id)
+        current = self.access.require(project, allow_deleted=True)
+        # Re-run selected, idempotent components before activating a Project
+        # whose initialization may previously have failed.
+        self.components.initialize(current)
         current.deleted = False
-        self.save(current)
+        self.repository.save(current)
+        for initializer in self.initializers:
+            try:
+                initializer.initialize(deepcopy(current))
+            except Exception:
+                current.deleted = True
+                self.repository.save(current)
+                raise
         project.deleted = False
         log_event(current.paths.logs, "project.restored", entity_id=current.id)
 
     def clone(self, source: Project, *, title: Optional[str] = None) -> Project:
+        source = self.access.require(source)
+        self.components.validate(source.components)
         tasks = self.tasks.list(source)
         for task in tasks:
             self.tasks.require_inactive(task)
-        clone = self.create(title if title is not None else source.title, config=source.config)
-        for task in tasks:
-            self.tasks.clone(task, clone)
+        clone = self.create(title if title is not None else source.title, config=source.config,
+                            components=source.components)
+        try:
+            self.components.clone(source, clone)
+            for task in tasks:
+                self.tasks.clone(task, clone)
+        except Exception:
+            clone.deleted = True
+            self.repository.save(clone)
+            raise
         log_event(clone.paths.logs, "project.cloned", entity_id=clone.id,
                   related_id=source.id)
         return clone

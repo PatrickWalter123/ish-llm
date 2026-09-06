@@ -17,7 +17,6 @@ from ish.core.models import MessageRole, MessageStatus, new_id
 from ish.services.secrets import SecretManager, SecretResolver
 from .base import EngineContext, EngineEvent, EngineEventType
 from ish.providers.litellm import completion, stream_completion
-from ish.components.tools import ToolRegistry
 
 
 class LoopEngineError(RuntimeError):
@@ -135,11 +134,9 @@ class _Turn:
 
 
 class LoopEngine:
-    def __init__(self, *, tools: Optional[ToolRegistry] = None,
-                 secrets: Optional[SecretResolver] = None,
+    def __init__(self, *, secrets: Optional[SecretResolver] = None,
                  options: Optional[LoopOptions] = None,
                  completion_fn: Callable[..., Iterator[Any]] = completion) -> None:
-        self.tools = tools or ToolRegistry()
         self.secrets = secrets
         self.options = options or LoopOptions()
         self.completion_fn = completion_fn
@@ -169,7 +166,7 @@ class LoopEngine:
                 request["api_key"] = resolver.resolve(config.credential_ref)
             except Exception:
                 raise LoopEngineError("Credential could not be resolved") from None
-        definitions = self.tools.definitions()
+        definitions = context.tools.definitions()
         if definitions:
             request["tools"] = definitions
             request["tool_choice"] = "auto"
@@ -208,7 +205,7 @@ class LoopEngine:
                 if any(call.id in seen_call_ids for call in calls):
                     raise LoopEngineError("Repeated tool call ID")
                 try:
-                    prepared = [self.tools.prepare(call.name, call.arguments) for call in calls]
+                    prepared = [context.tools.prepare(call.name, call.arguments) for call in calls]
                 except ValueError:
                     raise LoopEngineError("Tool call validation failed") from None
             except asyncio.CancelledError:

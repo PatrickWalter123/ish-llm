@@ -6,6 +6,7 @@ from ish.compat import StrEnum
 from typing import Protocol
 
 from ish.core.models import Message, Project, Run, Task
+from ish.components.tools import ToolRegistry
 
 
 class EngineEventType(StrEnum):
@@ -34,6 +35,8 @@ class EngineContext:
     task: Task
     run: Run
     messages: tuple[Message, ...]
+    # Per-Run snapshot of Project capabilities, never part of persisted models.
+    tools: ToolRegistry = field(default_factory=ToolRegistry)
 
 
 class Engine(Protocol):

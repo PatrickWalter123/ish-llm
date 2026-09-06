@@ -20,6 +20,8 @@ from tests.support.fake_engine import FakeStreamingEngine
 from ish.engines.loop import LoopEngine, LoopOptions
 from ish.providers.litellm import stream_completion
 from ish.components.tools import Tool, ToolRegistry
+from ish.components.tools.component import ToolComponent
+from ish.components.registry import ComponentRegistry
 from ish.services.conversation import ConversationStore
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager
@@ -64,7 +66,8 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.tasks = TaskManager()
-        self.projects = ProjectManager(ProjectRepository(Path(self.temporary.name)), self.tasks)
+        self.components = ComponentRegistry()
+        self.projects = ProjectManager(ProjectRepository(Path(self.temporary.name)), self.tasks, components=self.components)
         self.project = self.projects.create("Loop project", config=ProjectConfig(
             model="openai/test-model", default_engine="loop", temperature=None))
         self.task = self.tasks.create(self.project, "Loop task")
@@ -72,7 +75,9 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.registry = EngineRegistry()
         self.registry.register("fake", FakeStreamingEngine())
         self.events = []
-        self.manager = RunManager(self.tasks, self.registry, on_event=self.observe)
+        self.observer_errors = []
+        self.addCleanup(lambda: self.assertEqual(self.observer_errors, []))
+        self.manager = RunManager(self.tasks, self.registry, on_event=self.observe, capabilities=self.components)
         self.addAsyncCleanup(self.manager.shutdown)
         self.tool_arguments = []
         async def add(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -87,14 +92,23 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.events.append(event)
         if event.type == EngineEventType.TEXT_DELTA:
             # A UI sees only deltas already durably appended.
-            self.assertTrue(self.store.get(run.assistant_message_id).content.endswith(event.text))
+            if not self.store.get(run.assistant_message_id).content.endswith(event.text):
+                self.observer_errors.append(event.text)
 
     async def until(self, predicate) -> None:
         async with timeout(10):
             while not predicate():
                 await asyncio.sleep(0.005)
 
+    def enable_tools(self, tools):
+        self.components.register(ToolComponent(tools))
+        self.projects.set_components(self.project, ("tools",))
+        self.projects.configure_component(self.project, "tools", {"enabled": list(tools.names())})
+
     def engine(self, completion_fn, **kwargs) -> LoopEngine:
+        tools = kwargs.pop("tools", None)
+        if tools is not None:
+            self.enable_tools(tools)
         engine = LoopEngine(completion_fn=completion_fn, **kwargs)
         self.registry.register("loop", engine)
         return engine
@@ -368,6 +382,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_credential_does_not_call_provider(self) -> None:
         completion_fn = ScriptedCompletion()
         self.project.config.credential_ref = "env:ISH_MISSING_TEST_CREDENTIAL"
+        self.projects.save(self.project)
         self.engine(completion_fn)
         with patch.dict(os.environ, {}, clear=True):
             await self.submit()
@@ -451,7 +466,8 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             actual_completion = litellm.completion
             def with_client(**kwargs):
                 return actual_completion(**kwargs, client=client)
-            self.registry.register("loop", LoopEngine(tools=ToolRegistry((self.tool,))))
+            self.enable_tools(ToolRegistry((self.tool,)))
+            self.registry.register("loop", LoopEngine())
             with patch.object(litellm, "completion", side_effect=with_client):
                 await self.submit("Add 2 and 3")
         self.assertEqual(self.run_status(), RunStatus.COMPLETED)

@@ -50,6 +50,21 @@ class ToolRegistry:
             "parameters": deepcopy(tool.parameters),
         }} for tool in self._tools.values()]
 
+    def names(self) -> tuple[str, ...]:
+        return tuple(self._tools)
+
+    def select(self, names: tuple[str, ...]) -> "ToolRegistry":
+        if len(set(names)) != len(names):
+            raise ValueError("Duplicate enabled tool")
+        try:
+            return ToolRegistry(tuple(self._tools[name] for name in names))
+        except KeyError:
+            raise ValueError("Enabled tool is unavailable") from None
+
+    def extend(self, other: "ToolRegistry") -> None:
+        for tool in other._tools.values():
+            self.register(tool)
+
     def prepare(self, name: str, arguments: str) -> tuple[Tool, dict[str, Any]]:
         """Validate before executing any tool in a returned batch."""
         try:

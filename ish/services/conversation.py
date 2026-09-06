@@ -4,7 +4,7 @@ import os
 from copy import deepcopy
 from pathlib import Path
 
-from ish.core.models import Message, MessageRole, MessageStatus, new_id
+from ish.core.models import Message, MessageRole, MessageStatus, Task, new_id
 from ish.core.paths import TaskPaths
 from .logging import log_event
 from .storage import record, sync_directory
@@ -120,3 +120,8 @@ class ConversationStore:
     def update_metadata(self, message_id: str, metadata: dict) -> None:
         self.get(message_id)
         self._append({"type": "message.metadata", "id": message_id, "metadata": metadata})
+
+
+def conversation_store(task: Task) -> ConversationStore:
+    """Default injectable factory; consumers do not choose storage paths."""
+    return ConversationStore(task.paths.conversation)

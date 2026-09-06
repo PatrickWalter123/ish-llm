@@ -99,7 +99,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_permanent_delete_rejects_persisted_active_run(self) -> None:
         self.task.status = TaskStatus.RUNNING
-        self.tasks.save(self.task)
+        self.tasks.repository.save(self.task)
         for manager, item in ((self.tasks, self.task), (self.projects, self.project)):
             with self.assertRaises(ValueError):
                 manager.delete(item, permanent=True)

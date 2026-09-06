@@ -16,11 +16,14 @@ implements the domain and persistence/runtime foundation described below:
 * `ish/core`: Project, Task, Message, Run, and Step dataclasses, persisted enums, and major paths (native slots on Python 3.10+)
 * `ish/compat.py`: Python 3.9 compatibility adapters; no standard-library monkeypatching
 * `ish/engines`: Engine protocol, context snapshots, event types, registry, and LiteLLM LoopEngine
-* `ish/components`: reusable capabilities; tools implemented, RAG/MCP/skills/sub-agents/workflows packages reserved for future CRUD and adapters
+* `ish/components`: selected Project components, tool catalog/Project tool configuration, and component-owned workflow directory initialization; RAG/MCP/skills/sub-agents remain planned
 * `ish/providers`: LiteLLM synchronous stream transport and bounded async bridge
 * `ish/services/projects.py`: ProjectRepository and ProjectManager with delegated initialization and Task lifecycle coordination
 * `ish/services/tasks.py`: TaskRepository metadata persistence, TaskManager lifecycle/conversation snapshot cloning, and runtime-only TaskRuntime definition
 * `ish/services/conversation.py`: append-only JSONL conversation events
+* `ish/services/conversation_context.py`: shared conversation ordering and Run/clone snapshots
+* `ish/services/access.py`: authoritative Project loading and lifecycle/ownership checks
+* `ish/services/events.py`: best-effort display notifications after persistence
 * `ish/services/runs.py`: RunRepository metadata persistence and RunManager ownership of TaskRuntime queues/orchestration/recovery
 * `ish/services/steps.py`: StepRepository metadata persistence, StepManager lifecycle, and StepEventRecorder translation
 * `ish/services/secrets.py`: environment-backed credential resolution via `env:NAME` references
@@ -57,6 +60,19 @@ while its worker is idle, and also rejects persisted active Run state. Multiple
 RunManagers sharing one TaskManager cannot attach the same Task. No cross-process locking
 is implemented. Persistent models contain no runtime asyncio objects.
 
+ProjectManager binds its ProjectAccess to TaskManager. Mutation/execution entry
+points reload Project state rather than trusting stale handles. Public save
+edits existing active Project/Task configuration only; it cannot change managed
+deleted/execution state or recreate missing metadata. Task runtime state writes
+use RunManager's internal TaskManager path, requiring an attachment. Repositories
+remain lower-level storage APIs and are not authorization boundaries.
+
+ConversationContextBuilder owns turn ordering for both Run context and Task
+cloning. RunManager and TaskManager receive a ConversationStore factory rather
+than choosing storage paths at every call. Defaults retain the existing Task
+JSONL layout. These abstractions separate conversation policy from scheduling;
+they do not yet change synchronous I/O behavior.
+
 Engine contexts are snapshots of committed turns through the current request.
 Assistant answers are paired with user inputs by Run ID, since queued requests
 may be appended before a preceding answer exists. Future queued inputs are
@@ -91,7 +107,9 @@ The old `soft_delete` API was removed. Task clones normalize turn
 order and copy conversation/configuration with fresh Message and Task IDs,
 clear Run links, and cancel copied queued requests. They do not copy Runs,
 Steps, or artifacts. Project cloning delegates Task snapshots to TaskManager
-and copies Project configuration; it does not copy secrets or subsystem data.
+and copies Project configuration. Selected components define their own clone
+policy: ToolComponent copies enabled tool names, WorkflowComponent starts with
+an empty directory. Secrets and other subsystem artifacts are not copied by default.
 
 The test suite is `python -m unittest discover -s tests -v` after installing the
 package dependencies. It needs no live API or credentials and includes an
@@ -135,8 +153,9 @@ separate classes, and persisted Task objects still contain no runtime objects.
 Message persistence intentionally remains in ConversationStore, whose append-only
 event log differs from mutable domain metadata. Engine remains an execution
 protocol and does not acquire a persistence repository. JSON/JSONL formats,
-directory layout, enum values, and queue/recovery semantics are unchanged by
-this repository extraction; existing workspaces need no data migration.
+enum values, and queue/recovery semantics remain unchanged. Project metadata
+adds a backward-compatible `components` list; older workspaces default to no
+enabled components, regardless of which directories already exist.
 
 ## LiteLLM Loop Execution
 
@@ -166,7 +185,10 @@ per async tool. Tool handlers must propagate cancellation and avoid blocking.
 The Engine still writes no files. RunManager and StepEventRecorder persist its
 events through the existing services. RunManager's optional synchronous
 `on_event(run, event)` observer receives snapshots after persistence, enabling
-immediate display. It must be nonblocking; observer exceptions fail the Run.
+immediate display. RunEventPublisher isolates observer exceptions, recording a
+sanitized `observer.failed` event without failing the Run. Callbacks must remain
+synchronous and nonblocking. Engine/storage exceptions retain their execution
+failure semantics; display errors are not execution errors.
 
 All visible text in a Run accumulates in its existing single Assistant Message.
 The structured assistant tool calls and tool results are currently a transient
@@ -182,14 +204,33 @@ credential reference is set, LiteLLM can use its provider's normal environment
 authentication or a keyless local endpoint. No global SDK key/logging settings
 are mutated by the Engine.
 
-Reusable Tool and ToolRegistry are exported from `ish.components.tools`.
-Future component packages define their own serializable models, repositories,
-CRUD managers, and execution/connection adapters as needed. These are reusable
-capabilities, not Engine strategies. ProjectManager continues to initialize
-components through its existing protocol and knows none of their nested paths.
-SingleEngine/GraphEngine and the reserved component CRUD services are not yet
-implemented. New ProjectConfig instances default to `loop`; old persisted `fake`
-selections are preserved and require an explicit configuration change.
+Reusable Tool, ToolRegistry, ToolComponent, and ToolPaths are exported from
+`ish.components.tools`. ComponentRegistry validates selected identities and
+delegates initialization/configuration/cloning to each component. ProjectManager
+accepts the registry, and `create(..., components=("tools", "workflows"))` stores
+the selection in Project metadata. It does not know component directory layouts.
+`ProjectPaths.tools` and `.workflows` are removed; ToolPaths and WorkflowPaths
+own these roots. The default selection is empty, and core Task initialization
+is mandatory independently of optional components.
+
+ToolComponent persists enabled names in `tools/component.json`. Its application
+catalog contains trusted handlers, which are not persisted. RunManager receives
+the registry as CapabilityResolver and resolves a fresh Project-scoped tool
+snapshot into EngineContext for each Run. LoopEngine consumes this snapshot;
+it no longer owns a global tool registry. Configuration changes affect later
+Runs. Missing registered components fail closed before provider execution.
+Project selection is not inferred from existing directories, and saved component
+names never trigger arbitrary dynamic imports.
+
+Component initializers must be idempotent. Disabling a component retains data;
+re-enabling initializes only missing state. A failed create/clone is soft-deleted,
+and restore retries initialization. Failed selection changes retain the previous
+manifest but can leave partial directories; initialization is not transactional
+across components or process crashes. Future component packages own their CRUD
+and connection lifecycles. WorkflowComponent only initializes its directory;
+SingleEngine/GraphEngine and workflow/RAG/MCP/Skill/sub-agent CRUD remain planned.
+New ProjectConfig instances default to `loop`; old persisted `fake` selections
+are preserved and require an explicit configuration change.
 
 ## Domain Hierarchy
 
@@ -238,8 +279,6 @@ ProjectPaths exposes major Project paths such as:
 
 * root
 * memory
-* tools
-* workflows
 * tasks
 * secrets
 * state

@@ -85,7 +85,7 @@ class RepositoryTests(unittest.TestCase):
         repository.list.side_effect = lambda project, include_deleted=False: [
             deepcopy(task) for task in stored.values()
             if include_deleted or task.status != TaskStatus.DELETED]
-        manager = TaskManager(repository=repository)
+        manager = TaskManager(repository=repository, project_access=self.projects.access)
         task = manager.create(self.project, "In memory")
         repository.initialize.assert_called_once_with(self.project)
         self.assertFalse(task.paths.root.exists())

@@ -85,6 +85,24 @@ checks, round trips, task filtering, and duplicate Step IDs.
 
 ## Current Architecture
 
+Service boundary/component update (2026-09-07):
+
+* ProjectAccess is shared by ProjectManager/TaskManager/RunManager through service composition. Current persisted Project state is checked at mutation and execution entry points. Public save cannot resurrect deleted records or overwrite managed Task runtime state.
+* TaskManager must be bound by ProjectManager or receive `project_access=`. RunManager still owns runtime scheduling; TaskRuntime remains in tasks.py.
+* RunEventPublisher isolates UI observer failures and logs them safely; callbacks are still synchronous/nonblocking.
+* ConversationContextBuilder handles Run and clone turn ordering. Both managers accept an injectable conversation factory; RunManager defaults to TaskManager's factory/builder.
+* Project has persisted component names (old metadata defaults to none). ProjectManager.create accepts selected names and delegates directory creation to registered components.
+* ProjectPaths no longer exposes tools/workflows. ToolPaths and WorkflowPaths own their respective directories.
+* ToolComponent persists enabled tool names; WorkflowComponent initializes a directory only. RunManager accepts `capabilities=components` and injects fresh Project-scoped tools per Run. LoopEngine no longer accepts global `tools=`.
+* Save Project configuration before execution; stale caller configuration is no longer the runtime source of truth. Task public edits require a detached runtime.
+* Register implementations/handlers again on startup; persisted names do not dynamically load code. Component initialization is idempotent and failures can leave retained partial directories; see architecture/README for failure and clone policies.
+
+Final verification for this update: all 111 tests passed on Python 3.9.13
+(93.263 seconds) and Python 3.13.7 (93.552 seconds). This includes the previous
+91 regression cases plus 20 service-boundary/component cases. Both SDK/mock SSE
+tests passed without a live provider call. Full outputs are in
+`test-results-python39.txt` and `test-results-python313.txt`.
+
 Python 3.9 compatibility update (2026-09-06):
 
 * User-provided `D:\Program Files\Python39\python.exe` is Python 3.9.13. It was used to create `.venv39`, separately from the existing Python 3.13 `.venv`.

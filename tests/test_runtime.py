@@ -225,7 +225,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
         orphan = self.store.create(MessageRole.ASSISTANT, "orphan", MessageStatus.STREAMING)
         self.task.status = TaskStatus.RUNNING
         self.task.current_run_id = stale_runs[1].id
-        self.tasks.save(self.task)
+        self.tasks.repository.save(self.task)
         queued = self.store.create(MessageRole.USER, "recover-me", MessageStatus.QUEUED)
         await self.manager.start(self.project, self.task)
         await self.manager.start(self.project, self.task)

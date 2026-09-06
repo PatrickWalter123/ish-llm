@@ -135,7 +135,7 @@ class PersistenceTests(unittest.TestCase):
         stale_handle = self.tasks.load(self.project, self.task.id)
         self.task.status = TaskStatus.RUNNING
         self.task.current_run_id = new_id()
-        self.tasks.save(self.task)
+        self.tasks.repository.save(self.task)
         with self.assertRaises(ValueError):
             self.tasks.delete(stale_handle)
         with self.assertRaises(ValueError):

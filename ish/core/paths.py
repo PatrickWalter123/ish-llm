@@ -11,14 +11,6 @@ class ProjectPaths:
         return self.root / "memory"
 
     @property
-    def tools(self) -> Path:
-        return self.root / "tools"
-
-    @property
-    def workflows(self) -> Path:
-        return self.root / "workflows"
-
-    @property
     def tasks(self) -> Path:
         return self.root / "tasks"
 

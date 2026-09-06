@@ -10,6 +10,8 @@ from ish.core.models import ProjectConfig, Run, RunStatus
 from ish.engines.base import EngineEvent, EngineEventType, EngineRegistry
 from ish.engines.loop import LoopEngine, LoopOptions
 from ish.components.tools import Tool, ToolRegistry
+from ish.components.tools.component import ToolComponent
+from ish.components.registry import ComponentRegistry
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager
 from ish.services.tasks import TaskManager
@@ -26,23 +28,25 @@ def print_event(run: Run, event: EngineEvent) -> None:
 
 async def run_request(args: argparse.Namespace) -> int:
     tasks = TaskManager()
-    projects = ProjectManager(ProjectRepository(args.workspace / "projects"), tasks)
+    tools = ToolRegistry()
+    components = ComponentRegistry((ToolComponent(tools),))
+    projects = ProjectManager(ProjectRepository(args.workspace / "projects"), tasks, components=components)
     project = projects.create("LoopEngine demo", config=ProjectConfig(
         model=args.model, temperature=args.temperature, default_engine="loop",
         credential_ref=args.credential_ref, api_base=args.api_base,
-    ))
+    ), components=("tools",) if args.with_tools else ())
     task = tasks.create(project, "Streaming request")
-    tools = ToolRegistry()
     if args.with_tools:
         tools.register(Tool("add", "Add two numbers.", {
             "type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
             "required": ["a", "b"], "additionalProperties": False,
         }, add))
+        projects.configure_component(project, "tools", {"enabled": ["add"]})
     engines = EngineRegistry()
-    engines.register("loop", LoopEngine(tools=tools, options=LoopOptions(
+    engines.register("loop", LoopEngine(options=LoopOptions(
         max_iterations=args.max_iterations, request_timeout=args.timeout,
     )))
-    manager = RunManager(tasks, engines, on_event=print_event)
+    manager = RunManager(tasks, engines, on_event=print_event, capabilities=components)
     print(f"Project: {project.paths.root.resolve()}", file=sys.stderr)
     try:
         await manager.submit(project, task, args.prompt)

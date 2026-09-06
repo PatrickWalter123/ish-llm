@@ -88,6 +88,6 @@ def main2():
 
 
 if __name__ == "__main__":
-    # import asyncio
-    # asyncio.run(main())
-    main2()
+    import asyncio
+    asyncio.run(main())
+    # main2()

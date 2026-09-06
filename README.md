@@ -59,8 +59,8 @@ streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
 
-Latest verification: all 91 tests passed on both Python 3.9.13 (59.162 seconds,
-LiteLLM 1.80.17) and Python 3.13.7 (53.116 seconds, LiteLLM 1.100.0). Both SDK
+Latest verification: all 111 tests passed on both Python 3.9.13 (93.263 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (93.552 seconds, LiteLLM 1.100.0). Both SDK
 versions passed the actual SDK/mock SSE test. These results cover the installed
 interpreters; Python 3.9.25 was not separately executed. The test outputs are
 `test-results-python39.txt` and `test-results-python313.txt`.
@@ -115,8 +115,10 @@ bridge applies backpressure. The default total timeout per LLM round is 60s;
 each tool has a 30s timeout.
 
 RunManager accepts `on_event(run, event)` for displaying persisted events. The
-callback receives snapshots after each event is recorded; keep it quick and
-nonblocking. A callback exception fails the active Run. See `ish/demo.py`.
+callback receives snapshots after each event is recorded; keep it synchronous,
+quick, and nonblocking. RunEventPublisher catches display exceptions and logs
+`observer.failed` without failing the Run or dropping queued requests. Engine
+and persistence errors still fail execution. See `ish/demo.py`.
 
 The synchronous provider iterator lives in a dedicated daemon thread. Cancel
 stops delivery immediately; a blocked provider read cannot be forcibly stopped
@@ -186,6 +188,7 @@ from ish.services.steps import StepManager, StepRepository
 from ish.services.runs import RunManager, RunRepository
 
 tasks = TaskManager(repository=TaskRepository())
+projects = ProjectManager(ProjectRepository(Path("./workspace/projects")), tasks)
 steps = StepManager(repository=StepRepository())
 manager = RunManager(tasks, engines, repository=RunRepository(), steps=steps)
 ```
@@ -193,7 +196,8 @@ manager = RunManager(tasks, engines, repository=RunRepository(), steps=steps)
 RunManager is now imported from `ish.services.runs`; `ish.services.run_manager`
 has been removed. The previous `runs=` constructor argument and `.runs` attribute
 remain aliases for the Run repository. Message events still use ConversationStore.
-Persisted formats are unchanged. New Projects default to `loop`; previously
+Project metadata now includes a `components` list. Older metadata loads with an
+empty selection; existing directories are never implicitly enabled. New Projects default to `loop`; previously
 saved `fake` engine selections must be changed explicitly before real execution.
 The deterministic fake engine now exists only in `tests/support/fake_engine.py`.
 
@@ -206,7 +210,92 @@ Task clones copy configuration and conversation snapshots with fresh IDs.
 Cloned queued inputs become cancelled, Run links are cleared, and execution
 history and artifacts are not copied. Project clones copy configuration and
 active Task snapshots through TaskManager. Soft deletion marks metadata in
-place and retains the stored files.
+place and retains the stored files. Public Project/Task `save` methods edit
+configuration only: they reload current ownership/lifecycle state and cannot
+resurrect deleted records or set Task execution status. Task edits require a
+detached runtime. RunManager's internal transitions remain separate. Save Project
+configuration changes before submitting requests; caller-owned snapshots are
+not used as the source of current configuration.
+
+## Select Project components
+
+ProjectManager coordinates selected components; each component owns its paths,
+initialization, configuration, and clone policy. `ProjectPaths.tools` and
+`ProjectPaths.workflows` have been removed. Use `ToolPaths.for_project(project)`
+and `WorkflowPaths.for_project(project)` when the respective subsystem needs paths.
+
+```python
+from pathlib import Path
+from ish.components.registry import ComponentRegistry
+from ish.components.tools import Tool, ToolRegistry, ToolComponent
+from ish.components.workflows import WorkflowComponent
+from ish.engines.base import EngineRegistry
+from ish.engines.loop import LoopEngine
+from ish.core.models import ProjectConfig
+from ish.services.projects import ProjectManager, ProjectRepository
+from ish.services.tasks import TaskManager
+from ish.services.runs import RunManager
+
+async def add(arguments):
+    return arguments["a"] + arguments["b"]
+
+catalog = ToolRegistry((Tool("add", "Add two numbers", {
+    "type": "object",
+    "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
+    "required": ["a", "b"], "additionalProperties": False,
+}, add),))
+components = ComponentRegistry((ToolComponent(catalog), WorkflowComponent()))
+tasks = TaskManager()
+projects = ProjectManager(ProjectRepository(Path("workspace/projects")), tasks,
+                          components=components)
+project = projects.create("Example", components=("tools", "workflows"),
+                          config=ProjectConfig(model="openai/gpt-4o-mini", temperature=None))
+projects.configure_component(project, "tools", {"enabled": ["add"]})
+task = tasks.create(project, "Conversation")
+engines = EngineRegistry()
+engines.register("loop", LoopEngine())
+manager = RunManager(tasks, engines, capabilities=components)
+```
+
+Call `await manager.submit(project, task, text)` from an async UI handler.
+Pass the same configured component registry to ProjectManager and RunManager.
+Registered components are available to select; they are not automatically enabled.
+`create(..., components=())` creates no tool/workflow directories. Selecting tools
+creates `<project>/tools/component.json` with an empty `enabled` list; selecting
+workflows creates `<project>/workflows/`. Tool handlers remain in the application
+catalog and are never serialized into Project JSON.
+
+`projects.set_components(project, ("tools",))` changes selection after creation.
+Disabling a component preserves its data. Initializers must be idempotent;
+re-enabling tools keeps their previous configuration. Unknown/duplicate component
+identities are rejected before Project creation. Initialization/clone failures
+leave the new Project soft-deleted; restore retries initialization. A failed
+selection update leaves the old selection in place, though partial directories
+may remain. This is not a transactional plugin installer.
+
+LoopEngine no longer accepts `tools=`. A Run resolves a fresh tool registry from
+the saved Project selection/configuration into `EngineContext.tools`. This
+snapshot remains fixed through that Run; later Runs see saved changes. A Project
+without enabled tools cannot invoke another Project's tools, even through the
+same LoopEngine instance. Missing component implementations fail execution before
+the provider is called. After restart, reconstruct the registered Python handlers
+and components; the saved names do not automatically import executable code.
+
+The legacy constructor `initializers=` still runs mandatory application
+initializers for each Project. Use the component registry for optional features
+that users can select; core Task initialization is always performed.
+
+Project cloning delegates component configuration cloning: ToolComponent copies
+enabled names; WorkflowComponent currently creates an empty workspace. Workflow
+definition CRUD and GraphEngine are still planned. The remaining reserved
+RAG/MCP/Skill/sub-agent packages can implement the same ProjectComponent contract.
+
+TaskManager is bound to authoritative ProjectAccess when constructed with
+ProjectManager. A standalone TaskManager must instead receive `project_access=`.
+ConversationStore creation is injectable through `conversations=`, and
+ConversationContextBuilder centralizes Run context and clone ordering. RunManager
+defaults to the same factory/builder as TaskManager. For UI-to-storage separation,
+configure these services once in the application's composition code.
 
 ## Delete and restore
 
@@ -233,9 +322,9 @@ exclusive filesystem ownership; it is not protection against concurrent writers.
 
 `ish/engines` contains execution strategies and the Engine contract. LoopEngine
 is implemented; SingleEngine and GraphEngine remain planned. Reusable Tool and
-ToolRegistry live in `ish/components/tools`, alongside reserved `rag`, `mcp`,
-`skills`, `subagents`, and `workflows` packages for future component CRUD and
-runtime adapters. These reserved packages do not yet implement CRUD. Provider
+ToolRegistry and Project tool selection live in `ish/components/tools`.
+`workflows` has its own directory initializer; `rag`, `mcp`, `skills`, and
+`subagents` remain reserved for future component CRUD and runtime adapters. Provider
 stream transport lives in `ish/providers/litellm.py`. TaskRuntime lives in
 `ish/services/tasks.py` and is owned and scheduled by RunManager.
 
