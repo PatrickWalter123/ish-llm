@@ -1,6 +1,6 @@
 # Production readiness assessment
 
-Assessed 2026-09-07 after workspace locking, storage I/O, and service module consolidation.
+Assessed 2026-09-08 after moving the authoring API and LiteLLM chunk handling into BaseEngine.
 
 ## Decision
 
@@ -26,9 +26,10 @@ Python 3.13.7 / LiteLLM 1.100.0:
 .\.venv39\Scripts\python.exe -m ish.demo --help
 ```
 
-All 125 tests passed on Python 3.9.13 in 62.723 seconds and on Python 3.13.7 in
-74.111 seconds. Compilation, dependency consistency, and demo import/argument
-parsing passed. Full suite outputs are `test-results-python39.txt` and
+All 157 tests passed on Python 3.9.13 in 79.259 seconds and on Python 3.13.7 in
+92.817 seconds. Compilation of ish/tests/examples and the offline custom Engine
+example passed on both. Dependency consistency and demo import/argument parsing
+passed during the preceding validation. Full suite outputs are `test-results-python39.txt` and
 `test-results-python313.txt` at the repository root. Tests use temporary directories and
 do not delete real application workspaces.
 
@@ -70,7 +71,14 @@ are not sustained-throughput or deployment latency guarantees.
 
 ## Scope still planned
 
-LoopEngine is implemented. SingleEngine, GraphEngine, and a TUI are not.
+LoopEngine, the common BaseEngine authoring API, and sequential
+PipelineEngine/PreparationStep are implemented. BaseEngine lifecycle events,
+sanitized errors, cancellation, timeout, iterator cleanup, and shared-instance
+isolation plus inherited completion/chunk handling are covered by 19 authoring
+tests. Existing Loop tests also exercise the shared parser through the actual
+LiteLLM SDK with mock SSE. Arbitrary developer actions remain
+trusted code; the helper does not provide a sandbox or change the decision above.
+SingleEngine, GraphEngine, embedding/rerank engines, and a TUI are not.
 Python 3.9 compatibility does not change the production decision above. Its
 older LiteLLM version needs its own provider-compatibility and dependency
 maintenance plan. Python 3.9 dataclasses also have a `__dict__` instead of native
@@ -90,3 +98,9 @@ the previous blockers within the documented scope.
 
 Prioritize structured tool history/policy, Linux/provider and failure-mode
 validation, and realistic storage/load measurements before reconsidering production.
+
+Developer preparation callbacks and completion parameter factories are trusted
+code, not a sandbox. Preparation has observable Steps and cooperative timeout/
+cancellation, but component side effects cannot be rolled back. Runtime state and
+completion kwargs are not automatically persisted. Explicit SDK retries affect
+completion calls only; automatic stale-Run replay remains disabled.

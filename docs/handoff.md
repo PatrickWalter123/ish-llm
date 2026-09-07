@@ -6,7 +6,80 @@ Continue development of a production-oriented Linux TUI AI client built with Pyt
 
 Read `AGENTS.md` and `docs/architecture.md` before making architectural changes.
 
-## Latest: service module consolidation (2026-09-07)
+## Latest: BaseEngine and inherited LiteLLM Loop (2026-09-08)
+
+* Renamed StepEngine to BaseEngine and moved it into engines/base.py. Removed
+  engines/step.py and private engines/_completion.py. Public exports, preparation,
+  examples, demo, manual API example and automated tests use the new API.
+* BaseEngine centralizes Step events/cleanup and reusable stream_completion():
+  dict/SDK chunk text, fragmented tool calls, bounded output and finish validation.
+  A per-call response dict receives an assistant message after successful assembly.
+  Request containers are copied while live SDK handles keep identity.
+* Rebuilt loop.py as one LoopEngine(BaseEngine) class. It uses inherited step()
+  and stream_completion(). LoopOptions/options=, LoopEngineError, _Turn and
+  _ToolCall are removed. All application limits are explicit constructor kwargs;
+  unrestricted provider options continue to use completion_kwargs.
+* Project -> Task -> Run -> Engine -> Step ownership and persistence are unchanged.
+  No tool execution in BaseEngine and no automatic stale-Run retry were introduced.
+* Added coverage for minimal inherited completion with persistent Steps, SDK/dict
+  chunks, interleaved tool assembly, size/finish errors, simultaneous stream state,
+  SDK client identity, request copying and early close. Updated Python 3.9 type-hint
+  checks and direct Loop limit validation. No live provider calls are required.
+
+Final validation: all 157 tests passed on Python 3.9.13 (79.259 seconds) and
+Python 3.13.7 (92.817 seconds). Compilation and examples/custom_engine.py passed
+on both. Outputs: test-results-python39.txt and test-results-python313.txt.
+The actual LiteLLM SDK was exercised with mock SSE, without live provider calls.
+
+## Previous: common StepEngine authoring API
+
+* Added engines/step.py::StepEngine, publicly available from ish.engines together
+  with EngineContext/EngineRegistry. Developers implement run(context) or pass
+  action=, yielding text or awaiting a no-output operation. Step IDs, lifecycle
+  events, safe failures, optional timeout and iterator cleanup are centralized.
+* LoopEngine completion/tool stages and PreparationStep use the same helper.
+  Loop-specific options/parser helpers moved to private engines/_completion.py;
+  imports of LoopOptions/LoopEngineError from ish.engines.loop remain valid.
+* One StepEngine call creates one Step inside the existing Run. Pipeline composes
+  multiple stages. No changes to persistence, managers, OS ownership, or providers.
+  LLM step failures now use the generic safe 'LLM iteration failed' message.
+* Added examples/custom_engine.py (offline Echo Engine with full service setup),
+  a README authoring guide, and regression tests for subclass/callback actions,
+  persistent events, metadata/state isolation, failure/cancellation/timeout,
+  generic iterators, invalid output, and early-close/cleanup failures.
+
+Final validation: all 151 tests passed on Python 3.9.13 (102.761 seconds) and
+Python 3.13.7 (117.204 seconds). Compilation of ish/tests/examples and the offline
+custom_engine.py example passed on both. Full outputs: test-results-python39.txt
+and test-results-python313.txt. No live provider requests were made.
+
+## Previous: open LiteLLM parameters and preparation pipelines
+
+* LoopEngine stays LiteLLM-specific; completion_kwargs accepts a mapping or sync
+  context factory. Project values are defaults. SDK client/callback identities are
+  retained; option containers are copied per execution/request. Unknown LiteLLM
+  options pass through, while Loop messages/tools/stream/single-choice ownership
+  remains enforced. system_prompt accepts a string or sync context factory.
+* LoopOptions now contains application limits only. max_tokens moved to
+  completion_kwargs. Provider timeout/retries can be set there independently of
+  the application deadline; no automatic tool/Run replay is introduced.
+* PipelineEngine composes stages inside one Run. PreparationStep wraps an async
+  callback with observable Step events and timeout. EngineContext.state holds
+  Run-local outputs. Preparation failure/cancellation stops later stages; queues,
+  persistence and recovery stay with the existing managers.
+* No embedding/rerank or generic provider abstraction was added. No RAG or shell
+  execution implementation is claimed; developers supply callbacks/components.
+* README has runnable API patterns, including document preparation and prompt
+  factories. tests/test_pipeline.py covers order, state, failure, cancellation,
+  timeouts, concurrency, nested stages and iterator closing. The actual LiteLLM
+  mock-SSE test now passes a live client and completion options through kwargs.
+
+Final validation: all 138 tests passed on Python 3.9.13 (92.398 seconds) and
+Python 3.13.7 (75.395 seconds). Compile checks and demo help passed on both.
+Full outputs: test-results-python39.txt and test-results-python313.txt.
+No live provider requests were made.
+
+## Previous: service module consolidation (2026-09-07)
 
 * Renamed conversation_context.py to context.py, retaining ConversationContextBuilder.
 * Merged io.py (StorageIO/drain_on_cancel) and deletion.py (remove_owned_tree)

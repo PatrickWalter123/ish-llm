@@ -17,7 +17,7 @@ from unittest.mock import patch
 from ish.core.models import MessageStatus, ProjectConfig, RunStatus, StepStatus
 from ish.engines.base import EngineEventType, EngineRegistry
 from tests.support.fake_engine import FakeStreamingEngine
-from ish.engines.loop import LoopEngine, LoopOptions
+from ish.engines.loop import LoopEngine
 from ish.providers.litellm import stream_completion
 from ish.components.tools import Tool, ToolRegistry
 from ish.components.tools.component import ToolComponent
@@ -142,7 +142,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.project.config.api_base = "http://localhost:8000/v1"
         self.project.config.credential_ref = "env:ISH_TEST_API_KEY"
         self.projects.save(self.project)
-        self.engine(completion_fn, options=LoopOptions(max_tokens=100))
+        self.engine(completion_fn, completion_kwargs={"max_tokens": 100})
         with patch.dict(os.environ, {"ISH_TEST_API_KEY": "secret-test-value"}):
             await self.manager.submit(self.project, self.task, "question")
             await self.until(lambda: len(self.events) >= 2)
@@ -166,6 +166,81 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.get(first.assistant_message_id).content, "첫 답변")
         for path in self.project.paths.root.rglob("*.json*"):
             self.assertNotIn("secret-test-value", path.read_text(encoding="utf-8"))
+
+    async def test_free_completion_kwargs_override_defaults_without_persistence(self):
+        completion_fn = ScriptedCompletion([chunk("answer", finish="stop")])
+        params = {"model": "openai/override", "temperature": 0.15,
+                  "top_p": 0.9, "max_tokens": 64, "num_retries": 2,
+                  "timeout": 12, "api_key": "runtime-only-secret",
+                  "response_format": {"type": "json_object"},
+                  "provider_new_option": {"nested": [1, 2]}}
+        self.engine(completion_fn, completion_kwargs=params, system_prompt="Be concise.")
+        params["provider_new_option"]["nested"].append(3)
+        await self.submit()
+        request, = completion_fn.requests
+        self.assertEqual(request["model"], "openai/override")
+        self.assertEqual(request["temperature"], 0.15)
+        self.assertEqual(request["provider_new_option"], {"nested": [1, 2]})
+        self.assertEqual(request["response_format"], {"type": "json_object"})
+        self.assertEqual(request["num_retries"], 2)
+        self.assertEqual(request["timeout"], 12)
+        self.assertEqual(request["messages"][0], {"role": "system", "content": "Be concise."})
+        self.assertEqual(self.run_status(), RunStatus.COMPLETED)
+        for path in self.project.paths.root.rglob("*.json*"):
+            self.assertNotIn("runtime-only-secret", path.read_text(encoding="utf-8"))
+        self.assertEqual(len(self.store.list()), 2)
+
+    async def test_completion_snapshot_is_fresh_per_iteration_and_factories_run_once(self):
+        requests = []
+        params = {"provider_option": {"values": [1]}}
+        factories = []
+        def factory(context):
+            factories.append(context.run.id)
+            return params
+        def completion_fn(**kwargs):
+            requests.append(deepcopy(kwargs))
+            kwargs["provider_option"]["values"].append(99)
+            if len(requests) == 1:
+                params["provider_option"]["values"].append(2)
+                yield chunk(calls=[call()], finish="tool_calls")
+            else:
+                yield chunk("done", finish="stop")
+        self.engine(completion_fn, completion_kwargs=factory,
+                    tools=ToolRegistry((self.tool,)), system_prompt="system")
+        await self.submit()
+        self.assertEqual(len(factories), 1)
+        self.assertEqual(len(requests), 2)
+        self.assertTrue(all(request["provider_option"] == {"values": [1]} for request in requests))
+        self.assertTrue(all(sum(message["role"] == "system" for message in request["messages"]) == 1
+                            for request in requests))
+        self.assertEqual(self.run_status(), RunStatus.COMPLETED)
+
+    async def test_reserved_completion_contract_is_rejected_before_provider_call(self):
+        completion_fn = ScriptedCompletion()
+        engine = self.engine(completion_fn)
+        for params in ({"stream": False}, {"n": 2}, {"messages": []},
+                       {"tools": []}, {"functions": []}, {"function_call": "auto"}):
+            engine.completion_kwargs = params
+            await self.submit()
+            self.assertEqual(self.run_status(), RunStatus.FAILED)
+        self.assertEqual(completion_fn.requests, [])
+
+    async def test_explicit_model_works_without_project_model(self):
+        self.project.config.model = ""
+        self.projects.save(self.project)
+        completion_fn = ScriptedCompletion([chunk("done", finish="stop")])
+        self.engine(completion_fn, completion_kwargs={"model": "openai/explicit"})
+        await self.submit()
+        self.assertEqual(self.run_status(), RunStatus.COMPLETED)
+
+    async def test_tool_choice_option_is_preserved_for_registered_tools(self):
+        completion_fn = ScriptedCompletion([chunk("done", finish="stop")])
+        self.engine(completion_fn, tools=ToolRegistry((self.tool,)),
+                    completion_kwargs={"tool_choice": "none", "parallel_tool_calls": False})
+        await self.submit()
+        self.assertEqual(completion_fn.requests[0]["tool_choice"], "none")
+        self.assertFalse(completion_fn.requests[0]["parallel_tool_calls"])
+        self.assertEqual(self.run_status(), RunStatus.COMPLETED)
 
     async def test_fragmented_tool_calls_execute_and_feed_next_iteration(self) -> None:
         completion_fn = ScriptedCompletion([
@@ -222,7 +297,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_loop_limit_prevents_unconsumable_tool_side_effects(self) -> None:
         completion_fn = ScriptedCompletion([chunk(calls=[call()], finish="tool_calls")])
-        self.engine(completion_fn, tools=ToolRegistry((self.tool,)), options=LoopOptions(max_iterations=1))
+        self.engine(completion_fn, tools=ToolRegistry((self.tool,)), max_iterations=1)
         await self.submit()
         self.assertEqual(self.run_status(), RunStatus.FAILED)
         self.assertEqual(len(completion_fn.requests), 1)
@@ -326,7 +401,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
                 yield chunk("late", finish="stop")
             finally:
                 closed.set()
-        self.engine(completion_fn, options=LoopOptions(request_timeout=0.2))
+        self.engine(completion_fn, request_timeout=0.2)
         await self.submit()
         self.assertEqual(self.run_status(), RunStatus.FAILED)
         self.assertEqual(self.output(), "partial")
@@ -362,7 +437,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
         tool = Tool("add", "blocking", self.tool.parameters, blocking)
         completion_fn = ScriptedCompletion([chunk(calls=[call()], finish="tool_calls")])
-        self.engine(completion_fn, tools=ToolRegistry((tool,)), options=LoopOptions(tool_timeout=0.05))
+        self.engine(completion_fn, tools=ToolRegistry((tool,)), tool_timeout=0.05)
         await self.submit()
         self.assertEqual(self.run_status(), RunStatus.FAILED)
         self.assertEqual(len(completion_fn.requests), 1)
@@ -463,17 +538,17 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         with httpx.Client(transport=httpx.MockTransport(handle)) as http_client:
             client = OpenAI(api_key="offline-test", base_url="https://llm.invalid/v1",
                             max_retries=0, http_client=http_client)
-            actual_completion = litellm.completion
-            def with_client(**kwargs):
-                return actual_completion(**kwargs, client=client)
             self.enable_tools(ToolRegistry((self.tool,)))
-            self.registry.register("loop", LoopEngine())
-            with patch.object(litellm, "completion", side_effect=with_client):
-                await self.submit("Add 2 and 3")
+            self.registry.register("loop", LoopEngine(completion_kwargs={
+                "client": client, "top_p": 0.8, "max_tokens": 32,
+            }))
+            await self.submit("Add 2 and 3")
         self.assertEqual(self.run_status(), RunStatus.COMPLETED)
         self.assertEqual(self.output(), "The result is 5.")
         self.assertEqual(len(requests), 2)
         self.assertTrue(all(request["stream"] for request in requests))
+        self.assertTrue(all(request["top_p"] == 0.8 for request in requests))
+        self.assertTrue(all(request["max_tokens"] == 32 for request in requests))
         self.assertEqual(requests[1]["messages"][-1]["role"], "tool")
         self.assertEqual(len(closed), 2)
 
@@ -504,10 +579,13 @@ class StreamBridgeTests(unittest.IsolatedAsyncioTestCase):
 
 class ConfigurationTests(unittest.TestCase):
     def test_invalid_limits(self) -> None:
-        for kwargs in ({"max_iterations": 0}, {"request_timeout": float("inf")},
-                       {"max_tokens": -1}, {"buffer_size": 0}, {"tool_timeout": -1}):
+        for kwargs in ({"max_iterations": 0}, {"max_iterations": True},
+                       {"request_timeout": float("inf")}, {"request_timeout": True},
+                       {"buffer_size": 0}, {"tool_timeout": -1},
+                       {"max_tool_calls": 0}, {"max_output_chars": False},
+                       {"max_argument_chars": 0}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                LoopOptions(**kwargs)
+                LoopEngine(**kwargs)
 
     def test_secrets_only_resolve_environment_references(self) -> None:
         with patch.dict(os.environ, {"ISH_SECRET": "value"}):

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from ish.core.models import ProjectConfig
 from ish.engines.base import EngineEventType, EngineRegistry
-from ish.engines.loop import LoopEngine, LoopOptions
+from ish.engines.loop import LoopEngine
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.tasks import TaskManager
 from ish.services.runs import RunManager
@@ -16,7 +16,7 @@ project_manager = ProjectManager(
 engine_registry = EngineRegistry()
 engine_registry.register(
     "loop",
-    LoopEngine(options=LoopOptions(max_iterations=8)),
+    LoopEngine(max_iterations=8),
 )
 
 

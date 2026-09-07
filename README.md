@@ -59,8 +59,8 @@ streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
 
-Latest verification: all 125 tests passed on both Python 3.9.13 (62.723 seconds,
-LiteLLM 1.80.17) and Python 3.13.7 (74.111 seconds, LiteLLM 1.100.0). Both SDK
+Latest verification: all 157 tests passed on both Python 3.9.13 (79.259 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (92.817 seconds, LiteLLM 1.100.0). Both SDK
 versions passed the actual SDK/mock SSE test. These results cover the installed
 interpreters; Python 3.9.25 was not separately executed. The test outputs are
 `test-results-python39.txt` and `test-results-python313.txt`.
@@ -85,9 +85,13 @@ compatible endpoint; `--temperature` defaults to omission so model defaults appl
 To attach the engine to your own services:
 
 ```python
-from ish.engines.loop import LoopEngine, LoopOptions
+from ish.engines.loop import LoopEngine
 
-engines.register("loop", LoopEngine(options=LoopOptions(max_iterations=8)))
+engines.register("loop", LoopEngine(
+    max_iterations=8,
+    completion_kwargs={"top_p": 0.9, "max_tokens": 4096},
+    system_prompt="Answer accurately and concisely.",
+))
 # Select "loop" through ProjectConfig.default_engine, Task.default_engine,
 # or await manager.submit(project, task, content, engine="loop").
 ```
@@ -98,8 +102,8 @@ values are not stored in Project JSON. With no reference, provider SDK
 environment/default authentication remains available, including keyless local
 endpoints. Do not put credentials in endpoint URLs.
 
-LoopEngine passes `stream=True`, a timeout, and `num_retries=0` to
-`litellm.completion`. It forwards content deltas immediately, assembles indexed
+LoopEngine calls `litellm.completion` with `stream=True`; timeout and
+`num_retries=0` are defaults that completion_kwargs can override. It forwards content deltas immediately, assembles indexed
 tool-call fragments, validates the complete batch against registered JSON
 schemas, executes async tool handlers serially, and includes their results in
 the next completion. Register tools through `ish.components.tools.ToolRegistry`;
@@ -110,9 +114,184 @@ Each LLM iteration and tool execution emits Step events. A `stop` finish reason
 ends the Run. Truncated streams, provider/tool errors, invalid arguments, and
 exhausted iteration limits fail the Run without automatic retries. Tools from a
 last iteration are not executed when no follow-up completion can be made.
-Output and tool arguments are bounded by LoopOptions, and a bounded stream
+Output and tool arguments are bounded by LoopEngine constructor limits, and a bounded stream
 bridge applies backpressure. The default total timeout per LLM round is 60s;
 each tool has a 30s timeout.
+
+`completion_kwargs` is a mapping of LiteLLM completion arguments or a synchronous
+`factory(context) -> mapping`. Values override Project model/temperature/API base
+and default provider options. New provider-specific parameters pass through
+without a new dataclass field; unsupported values are reported by LiteLLM.
+Runtime SDK clients and callbacks are supported and retained by reference. Plain
+dict/list/tuple containers are copied at configuration/snapshot/request boundaries.
+These runtime parameters are not serialized to Project/Run metadata or service
+logs. Continue using credential_ref/SecretManager for saved credentials; an
+explicit runtime api_key takes precedence over the Project reference.
+
+Application limits are direct keyword arguments: `max_iterations=8`,
+`request_timeout=60.0`, `tool_timeout=30.0`, `buffer_size=8`, `max_tool_calls=16`,
+`max_argument_chars=65536`, and `max_output_chars=1_000_000`. `LoopOptions` and
+`options=` were removed. For model options use `completion_kwargs`, for example
+`completion_kwargs={"max_tokens": 100}`.
+Provider `timeout` is separate from the total per-round `request_timeout` limit;
+configure both when necessary. Explicit SDK num_retries affects completion calls
+only, never automatic tool or stale-Run replay. The Loop requires streaming and
+one choice: stream=False/n other than 1 are rejected. messages and tools are built
+from the Task transcript and Project registry; overriding messages/tools or legacy
+functions/function_call is rejected. tool_choice and parallel_tool_calls are
+forwarded, but actual tool execution remains serial.
+
+## Write your own Engine
+
+Start with BaseEngine. Implement only `run(context)`: yield strings for response
+text, or use an async function returning None for work with no visible output.
+The base class creates Step IDs and emits start/text/completion/failure events.
+RunManager and StepManager still own all persistence and interruption handling.
+
+```python
+from ish.engines import EngineContext, BaseEngine
+
+class EchoEngine(BaseEngine):
+    async def run(self, context: EngineContext):
+        yield "Echo: "
+        yield context.messages[-1].content
+
+engines.register("echo", EchoEngine("Echo response", kind="text"))
+await manager.submit(project, task, "hello", engine="echo")
+```
+
+A complete offline example with service setup is `examples/custom_engine.py`:
+
+```powershell
+.\.venv39\Scripts\python.exe examples/custom_engine.py
+.\.venv\Scripts\python.exe examples/custom_engine.py
+```
+
+It prints `Echo: hello`, uses a temporary workspace, and makes no model requests.
+You can also pass `BaseEngine("Name", action=async_function_or_generator)` without
+writing a subclass. A generator must yield strings; a coroutine must return None.
+Store private/intermediate results in `context.state`, not in yielded dictionaries
+or Step metadata. Use `timeout_seconds=` for an optional whole-Step deadline.
+
+BaseEngine instances can be shared across Runs; execution state is local to each
+execute call. Keep your own per-Run state in context.state/local variables rather
+than on the Engine instance. Names, kind, metadata, and error_message are public,
+persisted labels: use safe developer constants. Metadata is checked for JSON
+serialization at construction. Raw action/SDK exceptions are replaced with a safe
+failure event. Cancellation propagates, and async iterators are closed even on
+failure/early close; no terminal event is yielded while the consumer is closing.
+The existing Run worker finalizes an interrupted active Step. Blocking work must
+still be offloaded by your action, and cancellation must not be swallowed.
+
+The inherited `execute()` wraps `run()` in one Step. To implement multiple Steps,
+override `execute(context)` and forward events from `self.step(context, action,
+name=..., kind=...)`, closing each iterator with `ish.compat.aclosing`. LoopEngine
+uses this pattern for every LLM round and tool operation. PreparationStep also
+inherits BaseEngine. PipelineEngine composes engines inside the same Run.
+
+BaseEngine also supplies `stream_completion(request, response=None)`. It calls
+LiteLLM's synchronous `completion(..., stream=True)` through the existing bounded
+thread bridge, yielding text from dictionary or SDK chunks as it arrives. This
+matches the [LiteLLM streaming format](https://docs.litellm.ai/docs/completion/stream).
+A minimal text-completion engine can return that async iterator directly:
+
+```python
+from ish.engines import BaseEngine
+
+class AnswerEngine(BaseEngine):
+    def run(self, context):
+        return self.stream_completion({
+            "model": context.project.config.model,
+            "messages": [{"role": "user", "content": context.messages[-1].content}],
+            "max_tokens": 1024,
+            "timeout": 30,
+        })
+
+engines.register("answer", AnswerEngine("Answer", kind="llm", timeout_seconds=35))
+```
+
+`run()` here is an ordinary function returning an async iterator; BaseEngine
+consumes and closes it. This example sends the current input and uses the SDK's
+environment authentication. Custom engines choose their own history, system prompt,
+Project options and credential resolution; LoopEngine supplies those policies.
+For preparation or text transformation use `async def run()` with
+`async with aclosing(self.stream_completion(request)) as deltas` and yield strings.
+
+Pass a fresh `response={}` to receive the assembled assistant message after normal
+stream completion. It contains `role`, `content`, and optional `tool_calls` in
+completion message format. Fragmented tool calls are ordered by index and
+validated before success; the helper does not execute them. The output dictionary
+is unchanged on failure/cancellation and must remain local to that request. Usage,
+reasoning and multimodal deltas are not exposed by this text/tool helper. It
+requires one choice and normal `stop` or `tool_calls` termination.
+
+Each call copies builtin request containers while retaining live SDK handles.
+Assembly never lives on the Engine instance. The helper itself has no Step
+lifecycle/deadline: use it inside `run()` or `self.step(...)` for those guarantees.
+BaseEngine provides a LiteLLM convenience, not a cross-provider abstraction;
+non-LLM engines can use only its Step event support without invoking LiteLLM.
+
+Migration: import `BaseEngine` from `ish.engines` or `ish.engines.base` instead of
+`StepEngine`/`ish.engines.step`. The old module, `_completion.py`, `LoopOptions`,
+`LoopEngineError`, `_Turn`, and `_ToolCall` are removed. LoopEngine is a single
+BaseEngine subclass with direct constructor options. Validation raises standard
+ValueError/TypeError; execution failures retain sanitized Step errors and
+RuntimeError through the common lifecycle. Existing event/persistence formats and
+RunManager ownership are unchanged.
+
+## Prepare a Run before its Loop
+
+PipelineEngine runs Engine stages in order inside the same Run. PreparationStep
+wraps an async callback as an observable Step. All stages receive the same
+EngineContext and its fresh, runtime-only state dictionary. The Loop evaluates
+completion_kwargs/system_prompt factories after preparation, once per execution.
+A system prompt is prepended to the provider transcript and is not appended as a
+new durable conversation message each round.
+
+```python
+import asyncio
+import os
+from pathlib import Path
+from ish.engines.loop import LoopEngine
+from ish.engines.pipeline import PipelineEngine, PreparationStep
+
+async def prepare(context):
+    # Offload blocking reads. This example loads context, not a RAG implementation.
+    path = context.project.paths.root / "instructions.txt"
+    context.state["instructions"] = await asyncio.to_thread(
+        path.read_text, encoding="utf-8"
+    )
+    context.state["shell_env"] = dict(os.environ)  # for subprocess env=, not logs
+
+engines.register("prepared_loop", PipelineEngine(stages=[
+    PreparationStep("Read instructions", prepare, kind="retrieval"),
+    LoopEngine(
+        max_iterations=8,
+        completion_kwargs={"top_p": 0.9, "max_tokens": 4096},
+        system_prompt=lambda context: context.state["instructions"],
+    ),
+]))
+
+# The caller creates instructions.txt in the Project before submitting.
+await manager.submit(project, task, "Help with this workspace", engine="prepared_loop")
+```
+
+PreparationStep defaults to a 60-second timeout; set timeout_seconds explicitly
+or use None for no deadline. Callbacks/factories are developer code on the event
+loop: avoid blocking calls, propagate cancellation, keep per-Run values in
+context.state, and do not mutate global os.environ. A copied environment reflects
+this process's current environment; it cannot automatically read changes from an
+unrelated shell. RAG/Shell work belongs to component services; this feature does
+not implement RAG synchronization or Shell execution. Engine stages never write
+Task/Run/Step/conversation persistence directly.
+
+A failed/timed-out preparation prevents subsequent stages; interruption marks the
+Run and active Step interrupted and preserves queued input. Pipeline also stops
+on non-success Step terminal events or unfinished Steps, and closes each stage's
+iterator. A crash uses the existing stale-Run recovery policy: no preparation or
+Loop side effects are automatically replayed. Pipelines may be nested; this is
+sequential composition, not GraphEngine or an arbitrary-code loader. Shared
+clients and developer component state still need their own concurrency handling.
 
 RunManager accepts `on_event(run, event)` for displaying persisted events. The
 callback receives snapshots after each event is recorded; keep it synchronous,

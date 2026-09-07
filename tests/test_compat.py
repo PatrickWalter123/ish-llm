@@ -17,8 +17,8 @@ from ish.core.models import (
     Step, StepStatus, Task, TaskStatus,
 )
 from ish.core.paths import ProjectPaths
-from ish.engines.base import EngineContext, EngineEvent, EngineEventType
-from ish.engines.loop import LoopOptions
+from ish.engines.base import BaseEngine, EngineContext, EngineEvent, EngineEventType
+from ish.engines.loop import LoopEngine
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.storage import record
 from ish.services.tasks import TaskManager, TaskRuntime
@@ -37,11 +37,14 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_public_model_type_hints_resolve_on_python39(self) -> None:
         for model in (Project, ProjectConfig, Task, Message, Run, Step, TaskRuntime,
-                      EngineEvent, EngineContext, LoopOptions):
+                      EngineEvent, EngineContext):
             with self.subTest(model=model.__name__):
                 hints = get_type_hints(model)
                 self.assertTrue({field.name for field in fields(model)} <= hints.keys())
         self.assertTrue(get_type_hints(TaskManager.create))
+        for method in (BaseEngine.__init__, BaseEngine.step, BaseEngine.stream_completion,
+                       LoopEngine.__init__):
+            self.assertTrue(get_type_hints(method))
 
     def test_dataclass_defaults_frozen_copy_and_field_only_persistence(self) -> None:
         config = ProjectConfig()

@@ -1,0 +1,34 @@
+test_cleanup_failure_during_close_does_not_yield_failure_event (tests.test_base_engine.BaseEngineTests) ... ok
+test_close_after_started_does_not_invoke_action_or_emit_terminal_event (tests.test_base_engine.BaseEngineTests) ... ok
+test_close_after_text_closes_underlying_generator (tests.test_base_engine.BaseEngineTests) ... ok
+test_coroutine_action_stores_private_state_without_emitting_text (tests.test_base_engine.BaseEngineTests) ... ok
+test_generic_async_iterator_and_close_failure (tests.test_base_engine.BaseEngineTests) ... ok
+test_interrupt_closes_stream_and_preserves_queued_request (tests.test_base_engine.BaseEngineTests) ... ok
+test_invalid_output_fails_without_persisting_raw_objects (tests.test_base_engine.BaseEngineTests) ... ok
+test_partial_failure_is_sanitized_closes_source_and_continues_queue (tests.test_base_engine.BaseEngineTests) ... ok
+test_shared_engine_has_unique_steps_and_isolated_metadata_and_state (tests.test_base_engine.BaseEngineTests) ... ok
+test_subclass_reuses_completion_with_automatic_step_persistence (tests.test_base_engine.BaseEngineTests) ... ok
+test_subclass_yields_text_and_records_one_completed_step (tests.test_base_engine.BaseEngineTests) ... ok
+test_timeout_finalizes_failed_step_and_closes_coroutine (tests.test_base_engine.BaseEngineTests) ... ok
+test_unimplemented_operation_is_a_failed_step (tests.test_base_engine.BaseEngineTests) ... ok
+test_early_close_closes_provider_and_leaves_response_unfinished (tests.test_base_engine.CompletionHelperTests) ... ok
+test_incomplete_or_oversized_stream_does_not_publish_complete_response (tests.test_base_engine.CompletionHelperTests) ... ok
+test_nonstreaming_or_multiple_choices_rejected_before_provider_call (tests.test_base_engine.CompletionHelperTests) ... ok
+test_sdk_chunks_and_interleaved_tool_fragments_build_assistant_message (tests.test_base_engine.CompletionHelperTests) ... ok
+test_simultaneous_streams_keep_results_and_request_copies_isolated (tests.test_base_engine.CompletionHelperTests) ... ok
+test_invalid_persistent_metadata_is_rejected_before_execution (tests.test_base_engine.StepConfigurationTests) ... ok
+test_body_errors_are_not_converted_into_timeouts (tests.test_compat.AsyncCompatibilityTests) ... ok
+test_early_stream_close_runs_finally (tests.test_compat.AsyncCompatibilityTests) ... ok
+test_external_cancellation_stays_cancelled_and_closes_stream (tests.test_compat.AsyncCompatibilityTests) ... ok
+test_nested_timeout_only_expires_inner_scope (tests.test_compat.AsyncCompatibilityTests) ... ok
+test_timeout_expires_and_task_can_continue (tests.test_compat.AsyncCompatibilityTests) ... ok
+test_dataclass_defaults_frozen_copy_and_field_only_persistence (tests.test_compat.CompatibilityTests) ... ok
+test_enum_string_formatting_and_json_remain_persisted_values (tests.test_compat.CompatibilityTests) ... ok
+test_junction_detection_for_normal_file_directory_and_missing_path (tests.test_compat.CompatibilityTests) ... ok
+test_public_model_type_hints_resolve_on_python39 (tests.test_compat.CompatibilityTests) ... ok
+test_real_windows_junction_cannot_be_followed_by_permanent_delete (tests.test_compat.CompatibilityTests) ... ok
+
+----------------------------------------------------------------------
+Ran 29 tests in 6.623s
+
+OK

@@ -1,0 +1,67 @@
+test_close_after_started_does_not_invoke_action_or_emit_terminal_event (tests.test_step_engine.StepEngineTests) ... ok
+test_close_after_text_closes_underlying_generator (tests.test_step_engine.StepEngineTests) ... ok
+test_coroutine_action_stores_private_state_without_emitting_text (tests.test_step_engine.StepEngineTests) ... ok
+test_generic_async_iterator_and_close_failure (tests.test_step_engine.StepEngineTests) ... ok
+test_interrupt_closes_stream_and_preserves_queued_request (tests.test_step_engine.StepEngineTests) ... ok
+test_invalid_output_fails_without_persisting_raw_objects (tests.test_step_engine.StepEngineTests) ... ok
+test_partial_failure_is_sanitized_closes_source_and_continues_queue (tests.test_step_engine.StepEngineTests) ... ok
+test_shared_engine_has_unique_steps_and_isolated_metadata_and_state (tests.test_step_engine.StepEngineTests) ... ok
+test_subclass_yields_text_and_records_one_completed_step (tests.test_step_engine.StepEngineTests) ... ok
+test_timeout_finalizes_failed_step_and_closes_coroutine (tests.test_step_engine.StepEngineTests) ... ok
+test_invalid_limits (tests.test_loop.ConfigurationTests) ... ok
+test_schema_and_nonfinite_arguments_rejected (tests.test_loop.ConfigurationTests) ... ok
+test_secrets_only_resolve_environment_references (tests.test_loop.ConfigurationTests) ... ok
+test_cancel_during_completion_creation_closes_late_stream (tests.test_loop.LoopTests) ... ok
+test_completion_snapshot_is_fresh_per_iteration_and_factories_run_once (tests.test_loop.LoopTests) ... ok
+test_duplicate_call_id_is_not_executed_twice (tests.test_loop.LoopTests) ... ok
+test_explicit_model_works_without_project_model (tests.test_loop.LoopTests) ... ok
+test_fragmented_tool_calls_execute_and_feed_next_iteration (tests.test_loop.LoopTests) ... ok
+test_free_completion_kwargs_override_defaults_without_persistence (tests.test_loop.LoopTests) ... ok
+test_interrupt_during_blocked_read_preserves_queue_and_drops_late_delta (tests.test_loop.LoopTests) ... ok
+test_invalid_batch_does_not_execute_even_first_valid_tool (tests.test_loop.LoopTests) ... ok
+test_loop_limit_prevents_unconsumable_tool_side_effects (tests.test_loop.LoopTests) ... ok
+test_missing_credential_does_not_call_provider (tests.test_loop.LoopTests) ... ok
+test_multiple_tool_calls_are_ordered_by_index (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-496' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001A432CFF970>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+ok
+test_no_finish_reason_fails_instead_of_returning_partial_success (tests.test_loop.LoopTests) ... ok
+test_object_chunks_empty_content_and_usage_are_supported (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-553' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001A432D0E9D0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+ok
+test_provider_failure_is_sanitized_and_queue_continues (tests.test_loop.LoopTests) ... ok
+test_real_litellm_sdk_with_mock_http_sse_and_tool_loop (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-617' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[_chain_future.<locals>._call_check_cancel() at D:\Program Files\Python39\lib\asyncio\futures.py:384, <TaskWakeupMethWrapper object at 0x000001A432D39070>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.156 seconds
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content=None, rol...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content='The resu...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+ok
+test_real_time_deltas_and_request_configuration (tests.test_loop.LoopTests) ... ok
+test_request_timeout_stops_delivery (tests.test_loop.LoopTests) ... ok
+test_reserved_completion_contract_is_rejected_before_provider_call (tests.test_loop.LoopTests) ... ok
+test_token_limit_retains_last_delta_and_fails (tests.test_loop.LoopTests) ... ok
+test_tool_cancellation_keeps_worker_alive (tests.test_loop.LoopTests) ... ok
+test_tool_choice_option_is_preserved_for_registered_tools (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-884' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001A43AFFA640>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.204 seconds
+ok
+test_tool_failure_is_not_retried_or_leaked (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-909' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001A43B00BBB0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.109 seconds
+ok
+test_tool_timeout_fails_without_next_llm_call (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-934' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001A43B015160>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.110 seconds
+ok
+test_two_tasks_stream_concurrently_on_separate_threads (tests.test_loop.LoopTests) ... ok
+test_unknown_tool_cannot_execute (tests.test_loop.LoopTests) ... ok
+test_bounded_buffer_and_consumer_close (tests.test_loop.StreamBridgeTests) ... ok
+test_invalid_pipeline_and_preparation_configuration (tests.test_pipeline.PipelineConfigurationTests) ... ok
+test_failed_event_and_unfinished_stage_stop_following_stages (tests.test_pipeline.PipelineTests) ... ok
+test_interrupt_preparation_closes_action_and_only_next_request_runs_loop (tests.test_pipeline.PipelineTests) ... ok
+test_nested_pipelines_compose_with_generic_async_iterators (tests.test_pipeline.PipelineTests) ... ok
+test_preparation_failure_stops_loop_and_preserves_next_request (tests.test_pipeline.PipelineTests) ... Executing <Task pending name='Task-1138' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001A43B02B700>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.187 seconds
+ok
+test_preparations_feed_loop_factories_and_have_persistent_steps (tests.test_pipeline.PipelineTests) ... ok
+test_shared_pipeline_has_isolated_state_for_concurrent_tasks_and_later_runs (tests.test_pipeline.PipelineTests) ... ok
+test_timeout_stops_preparation_and_closes_action (tests.test_pipeline.PipelineTests) ... ok
+
+----------------------------------------------------------------------
+Ran 47 tests in 43.054s
+
+OK

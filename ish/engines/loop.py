@@ -1,248 +1,158 @@
-"""Stream completions, execute requested tools, and repeat within one Run."""
-from ish.compat import timeout
-from typing import Optional
+"""A BaseEngine subclass: complete, execute requested tools, then repeat."""
 
-import asyncio
 import json
 import math
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
-from ish.compat import aclosing
-from copy import deepcopy
-from dataclasses import field
-from ish.compat import dataclass
-from typing import Any
+from typing import Any, Optional, Union
 from urllib.parse import urlsplit
 
-from ish.core.models import MessageRole, MessageStatus, new_id
+from ish.compat import aclosing
+from ish.core.models import MessageRole, MessageStatus
 from ish.services.secrets import SecretManager, SecretResolver
-from .base import EngineContext, EngineEvent, EngineEventType
-from ish.providers.litellm import completion, stream_completion
+from ish.providers.litellm import completion
+from .base import BaseEngine, EngineContext, EngineEvent
 
 
-class LoopEngineError(RuntimeError):
-    """A safe-to-display LoopEngine failure."""
+class LoopEngine(BaseEngine):
+    """LiteLLM completion/tool loop with runtime kwargs and optional preparation inputs."""
 
-
-@dataclass(frozen=True, slots=True)
-class LoopOptions:
-    max_iterations: int = 8
-    request_timeout: float = 60.0
-    tool_timeout: float = 30.0
-    max_tokens: Optional[int] = None
-    buffer_size: int = 8
-    max_tool_calls: int = 16
-    max_argument_chars: int = 65536
-    max_output_chars: int = 1_000_000
-
-    def __post_init__(self) -> None:
-        for value in (self.max_iterations, self.buffer_size, self.max_tool_calls,
-                      self.max_argument_chars, self.max_output_chars):
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise ValueError("Loop limits must be positive integers")
-        for value in (self.request_timeout, self.tool_timeout):
-            if not math.isfinite(value) or value <= 0:
-                raise ValueError("Timeouts must be positive and finite")
-        if self.max_tokens is not None and (
-            isinstance(self.max_tokens, bool) or not isinstance(self.max_tokens, int)
-            or self.max_tokens < 1
-        ):
-            raise ValueError("max_tokens must be positive")
-
-
-def _get(value: Any, key: str, default: Any = None) -> Any:
-    return value.get(key, default) if isinstance(value, Mapping) else getattr(value, key, default)
-
-
-@dataclass(slots=True)
-class _ToolCall:
-    id: str = ""
-    name: str = ""
-    arguments: str = ""
-
-    def message(self) -> dict[str, Any]:
-        return {"id": self.id, "type": "function", "function": {
-            "name": self.name, "arguments": self.arguments,
-        }}
-
-
-@dataclass(slots=True)
-class _Turn:
-    content: list[str] = field(default_factory=list)
-    calls: dict[int, _ToolCall] = field(default_factory=dict)
-    finish_reason: Optional[str] = None
-    size: int = 0
-
-    def add(self, chunk: Any, options: LoopOptions) -> Optional[str]:
-        choices = _get(chunk, "choices", [])
-        if not choices:
-            return None  # e.g. the optional usage-only final chunk
-        if len(choices) != 1 or _get(choices[0], "index", 0) != 0:
-            raise LoopEngineError("Expected one completion choice")
-        choice = choices[0]
-        delta = _get(choice, "delta")
-        content = _get(delta, "content")
-        calls = _get(delta, "tool_calls") or []
-        if _get(delta, "function_call"):
-            raise LoopEngineError("Legacy function_call responses are unsupported")
-        if self.finish_reason is not None and (content or calls):
-            raise LoopEngineError("Content after stream termination")
-        if content is not None:
-            if not isinstance(content, str):
-                raise LoopEngineError("Expected text delta")
-            self.size += len(content)
-            if self.size > options.max_output_chars:
-                raise LoopEngineError("Completion output limit exceeded")
-            if content:
-                self.content.append(content)
-        for fragment in calls:
-            index = _get(fragment, "index")
-            if type(index) is not int or not 0 <= index < options.max_tool_calls:
-                raise LoopEngineError("Invalid tool call index or too many calls")
-            if _get(fragment, "type") not in (None, "function"):
-                raise LoopEngineError("Unsupported tool call type")
-            call = self.calls.setdefault(index, _ToolCall())
-            function = _get(fragment, "function")
-            for attribute, value in (("id", _get(fragment, "id")),
-                                     ("name", _get(function, "name")),
-                                     ("arguments", _get(function, "arguments"))):
-                if value is not None:
-                    if not isinstance(value, str):
-                        raise LoopEngineError("Invalid tool call fragment")
-                    setattr(call, attribute, getattr(call, attribute) + value)
-            if (len(call.arguments) > options.max_argument_chars
-                    or len(call.id) > 256 or len(call.name) > 64):
-                raise LoopEngineError("Tool call size limit exceeded")
-        reason = _get(choice, "finish_reason")
-        if reason is not None:
-            if not isinstance(reason, str):
-                raise LoopEngineError("Invalid finish reason")
-            if self.finish_reason is not None and self.finish_reason != reason:
-                raise LoopEngineError("Conflicting stream termination")
-            self.finish_reason = reason
-        return content or None
-
-    def validate(self) -> None:
-        if self.finish_reason is None:
-            raise LoopEngineError("Stream ended without a finish reason")
-        if self.finish_reason not in ("stop", "tool_calls"):
-            raise LoopEngineError("Completion did not finish normally")
-        if bool(self.calls) != (self.finish_reason == "tool_calls"):
-            raise LoopEngineError("Tool calls do not match finish reason")
-        ids = [call.id for call in self.calls.values()]
-        if any(not call.id or not call.name for call in self.calls.values()) or len(set(ids)) != len(ids):
-            raise LoopEngineError("Incomplete or duplicate tool calls")
-
-
-class LoopEngine:
     def __init__(self, *, secrets: Optional[SecretResolver] = None,
-                 options: Optional[LoopOptions] = None,
+                 max_iterations: int = 8, request_timeout: float = 60.0,
+                 tool_timeout: float = 30.0, buffer_size: int = 8,
+                 max_tool_calls: int = 16, max_argument_chars: int = 65536,
+                 max_output_chars: int = 1_000_000,
+                 completion_kwargs: Optional[Union[Mapping[str, Any],
+                     Callable[[EngineContext], Mapping[str, Any]]]] = None,
+                 system_prompt: Optional[Union[str, Callable[[EngineContext], str]]] = None,
                  completion_fn: Callable[..., Iterator[Any]] = completion) -> None:
+        super().__init__("Loop", completion_fn=completion_fn, buffer_size=buffer_size,
+                         max_tool_calls=max_tool_calls, max_argument_chars=max_argument_chars,
+                         max_output_chars=max_output_chars)
+        if type(max_iterations) is not int or max_iterations < 1:
+            raise ValueError("max_iterations must be a positive integer")
+        for value in (request_timeout, tool_timeout):
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value <= 0):
+                raise ValueError("Timeouts must be positive and finite")
         self.secrets = secrets
-        self.options = options or LoopOptions()
-        self.completion_fn = completion_fn
+        self.max_iterations = max_iterations
+        self.request_timeout = request_timeout
+        self.tool_timeout = tool_timeout
+        if completion_kwargs is not None and not (
+            isinstance(completion_kwargs, Mapping) or callable(completion_kwargs)
+        ):
+            raise TypeError("completion_kwargs must be a mapping or context factory")
+        if system_prompt is not None and not isinstance(system_prompt, str) and not callable(system_prompt):
+            raise TypeError("system_prompt must be a string or context factory")
+        self.completion_kwargs = (self.copy_params(dict(completion_kwargs))
+                                  if isinstance(completion_kwargs, Mapping) else completion_kwargs)
+        self.system_prompt = system_prompt
 
-    def _request(self, context: EngineContext) -> dict[str, Any]:
+    def _request(self, context: EngineContext, params: dict[str, Any]) -> dict[str, Any]:
         config = context.project.config
-        if not config.model.strip():
-            raise LoopEngineError("Project model is required")
         request: dict[str, Any] = {
-            "model": config.model, "stream": True, "timeout": self.options.request_timeout,
+            "model": config.model, "stream": True, "timeout": self.request_timeout,
             "num_retries": 0,
         }
         if config.temperature is not None:
             request["temperature"] = config.temperature
-        if self.options.max_tokens is not None:
-            request["max_tokens"] = self.options.max_tokens
         if config.api_base is not None:
-            url = urlsplit(config.api_base)
+            request["api_base"] = config.api_base
+        request.update(self.copy_params(params))
+        if not isinstance(request.get("model"), str) or not request["model"].strip():
+            raise ValueError("Completion model is required")
+        if request.get("api_base") is not None:
+            url = urlsplit(request["api_base"])
             if (url.scheme not in ("http", "https") or not url.hostname or url.username
                     or url.password or url.query or url.fragment):
-                raise LoopEngineError("api_base must be an HTTP URL without credentials or query")
-            request["api_base"] = config.api_base
-        if config.credential_ref is not None:
+                raise ValueError("api_base must be an HTTP URL without credentials or query")
+        if config.credential_ref is not None and "api_key" not in request:
             try:
                 resolver = self.secrets if self.secrets is not None else SecretManager(
                     log_dir=context.project.paths.logs)
                 request["api_key"] = resolver.resolve(config.credential_ref)
             except Exception:
-                raise LoopEngineError("Credential could not be resolved") from None
+                raise ValueError("Credential could not be resolved") from None
         definitions = context.tools.definitions()
         if definitions:
             request["tools"] = definitions
-            request["tool_choice"] = "auto"
+            request.setdefault("tool_choice", "auto")
         return request
 
     async def execute(self, context: EngineContext) -> AsyncIterator[EngineEvent]:
+        # Evaluate factories after preparation, once per Run. No shared per-Run
+        # state lives on the Engine; each provider call gets fresh containers.
+        supplied = (self.completion_kwargs(context) if callable(self.completion_kwargs)
+                    else self.completion_kwargs)
+        if supplied is None:
+            supplied = {}
+        if not isinstance(supplied, Mapping) or any(not isinstance(key, str) for key in supplied):
+            raise ValueError("Completion parameters must be a string-keyed mapping")
+        params = self.copy_params(dict(supplied))
+        # These fields define the Loop transcript/tool execution contract.
+        if any(key in params for key in ("messages", "tools", "functions", "function_call")):
+            raise ValueError("Loop owns messages and registered tool definitions")
+        if params.get("stream", True) is not True or params.get("n", 1) != 1:
+            raise ValueError("Loop requires stream=True and n=1")
+        prompt = self.system_prompt(context) if callable(self.system_prompt) else self.system_prompt
+        if prompt is not None and not isinstance(prompt, str):
+            raise ValueError("System prompt must be a string")
         messages = [{"role": message.role.value, "content": message.content}
                     for message in context.messages
                     if (message.role == MessageRole.USER and message.status == MessageStatus.COMMITTED)
                     or (message.role != MessageRole.USER and message.status in (
                         MessageStatus.COMPLETED, MessageStatus.INTERRUPTED, MessageStatus.FAILED))]
+        if prompt:
+            messages.insert(0, {"role": "system", "content": prompt})
         seen_call_ids: set[str] = set()
-        for iteration in range(1, self.options.max_iterations + 1):
-            step_id = new_id()
-            yield EngineEvent(EngineEventType.STEP_STARTED, step_id=step_id, kind="llm",
-                              name="LLM completion", metadata={"iteration": iteration})
-            turn = _Turn()
-            try:
-                request = self._request(context)
-                # Use a fresh transcript: a cancelled worker may still hold this
-                # request while waiting for its synchronous network read to end.
-                request["messages"] = deepcopy(messages)
-                async with timeout(self.options.request_timeout):
-                    async with aclosing(stream_completion(
-                        request, completion_fn=self.completion_fn,
-                        buffer_size=self.options.buffer_size,
-                    )) as chunks:
-                        async for chunk in chunks:
-                            text = turn.add(chunk, self.options)
-                            if text is not None:
-                                yield EngineEvent(EngineEventType.TEXT_DELTA, text=text)
-                turn.validate()
-                calls = [turn.calls[index] for index in sorted(turn.calls)]
-                if calls and iteration == self.options.max_iterations:
-                    raise LoopEngineError("Loop iteration limit reached")
-                if any(call.id in seen_call_ids for call in calls):
-                    raise LoopEngineError("Repeated tool call ID")
-                try:
-                    prepared = [context.tools.prepare(call.name, call.arguments) for call in calls]
-                except ValueError:
-                    raise LoopEngineError("Tool call validation failed") from None
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:
-                # Only our own controlled messages may enter Step persistence.
-                reason = (str(error) if isinstance(error, LoopEngineError) else
-                          "LLM request timed out" if isinstance(error, (TimeoutError, asyncio.TimeoutError)) else
-                          "LLM iteration failed")
-                yield EngineEvent(EngineEventType.STEP_FAILED, step_id=step_id,
-                                  error=reason)
-                raise LoopEngineError(reason) from None
-            yield EngineEvent(EngineEventType.STEP_COMPLETED, step_id=step_id)
+        for iteration in range(1, self.max_iterations + 1):
+            response: dict[str, Any] = {}
+            calls, prepared = [], []
+
+            async def complete(_context):
+                nonlocal calls, prepared
+                request = self._request(context, params)
+                request["messages"] = messages
+                async with aclosing(self.stream_completion(request, response=response)) as deltas:
+                    async for text in deltas:
+                        yield text
+                calls = response.get("tool_calls", [])
+                if calls and iteration == self.max_iterations:
+                    raise ValueError("Loop iteration limit reached")
+                if any(call["id"] in seen_call_ids for call in calls):
+                    raise ValueError("Repeated tool call ID")
+                # Validate the whole batch before any tool can have side effects.
+                prepared = [context.tools.prepare(
+                    call["function"]["name"], call["function"]["arguments"],
+                ) for call in calls]
+
+            async with aclosing(self.step(
+                context, complete, name="LLM completion", kind="llm",
+                timeout_seconds=self.request_timeout, metadata={"iteration": iteration},
+                error_message="LLM iteration failed",
+            )) as events:
+                async for event in events:
+                    yield event
             if not calls:
                 return
-            messages.append({"role": "assistant", "content": "".join(turn.content) or None,
-                             "tool_calls": [call.message() for call in calls]})
-            # prepared is built one-for-one from calls before any tool executes.
+            messages.append(response)
             for call, (tool, arguments) in zip(calls, prepared):
-                seen_call_ids.add(call.id)
-                tool_step_id = new_id()
-                yield EngineEvent(EngineEventType.STEP_STARTED, step_id=tool_step_id,
-                                  kind="tool", name=tool.name,
-                                  metadata={"iteration": iteration, "tool_call_id": call.id})
-                try:
-                    async with timeout(self.options.tool_timeout):
-                        result = await tool.handler(arguments)
+                seen_call_ids.add(call["id"])
+
+                async def execute_tool(_context):
+                    result = await tool.handler(arguments)
                     content = result if isinstance(result, str) else json.dumps(
                         result, ensure_ascii=False, allow_nan=False)
-                    if len(content) > self.options.max_output_chars:
-                        raise LoopEngineError("Tool output limit exceeded")
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    yield EngineEvent(EngineEventType.STEP_FAILED, step_id=tool_step_id,
-                                      error="Tool execution failed")
-                    raise LoopEngineError("Tool execution failed") from None
-                messages.append({"role": "tool", "tool_call_id": call.id,
-                                 "name": tool.name, "content": content})
-                yield EngineEvent(EngineEventType.STEP_COMPLETED, step_id=tool_step_id)
+                    if len(content) > self.max_output_chars:
+                        raise ValueError("Tool output limit exceeded")
+                    messages.append({"role": "tool", "tool_call_id": call["id"],
+                                     "name": tool.name, "content": content})
+
+                async with aclosing(self.step(
+                    context, execute_tool, name=tool.name, kind="tool",
+                    timeout_seconds=self.tool_timeout,
+                    metadata={"iteration": iteration, "tool_call_id": call["id"]},
+                    error_message="Tool execution failed",
+                )) as events:
+                    async for event in events:
+                        yield event

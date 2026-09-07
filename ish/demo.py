@@ -8,7 +8,7 @@ from typing import Any
 
 from ish.core.models import ProjectConfig, Run, RunStatus
 from ish.engines.base import EngineEvent, EngineEventType, EngineRegistry
-from ish.engines.loop import LoopEngine, LoopOptions
+from ish.engines.loop import LoopEngine
 from ish.components.tools import Tool, ToolRegistry
 from ish.components.tools.component import ToolComponent
 from ish.components.registry import ComponentRegistry
@@ -43,9 +43,9 @@ async def run_request(args: argparse.Namespace) -> int:
         }, add))
         projects.configure_component(project, "tools", {"enabled": ["add"]})
     engines = EngineRegistry()
-    engines.register("loop", LoopEngine(options=LoopOptions(
+    engines.register("loop", LoopEngine(
         max_iterations=args.max_iterations, request_timeout=args.timeout,
-    )))
+    ))
     manager = RunManager(tasks, engines, on_event=print_event, capabilities=components)
     print(f"Project: {project.paths.root.resolve()}", file=sys.stderr)
     try:

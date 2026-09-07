@@ -15,7 +15,7 @@ implements the domain and persistence/runtime foundation described below:
 
 * `ish/core`: Project, Task, Message, Run, and Step dataclasses, persisted enums, and major paths (native slots on Python 3.10+)
 * `ish/compat.py`: Python 3.9 compatibility adapters; no standard-library monkeypatching
-* `ish/engines`: Engine protocol, context snapshots, event types, registry, and LiteLLM LoopEngine
+* `ish/engines`: Engine protocol, context snapshots, event types, registry, BaseEngine event lifecycle and LiteLLM chunk handling, LiteLLM LoopEngine, and sequential PipelineEngine/PreparationStep
 * `ish/components`: selected Project components, tool catalog/Project tool configuration, and component-owned workflow directory initialization; RAG/MCP/skills/sub-agents remain planned
 * `ish/providers`: LiteLLM synchronous stream transport and bounded async bridge
 * `ish/services/projects.py`: ProjectRepository and ProjectManager with delegated initialization and Task lifecycle coordination
@@ -249,6 +249,102 @@ enum values, and queue/recovery semantics remain unchanged. Project metadata
 adds a backward-compatible `components` list; older workspaces default to no
 enabled components, regardless of which directories already exist.
 
+## Beginner Engine Authoring
+
+engines/base.py defines BaseEngine alongside the existing Engine protocol,
+context, events and registry. It is re-exported from ish.engines. Override
+run(context) or supply action=: return an async text iterator, yield strings from
+an async generator, or perform an async operation returning None. The inherited
+execute() wraps the operation in one Step and maps text to TEXT_DELTA. Engines
+with several Steps override execute() and use self.step(context, action, name=...)
+for each operation. Consumers forwarding these streams use compat.aclosing.
+
+BaseEngine retains the optional whole-Step timeout, JSON-safe copied metadata,
+sanitized failure events, and iterator cleanup. Cancellation/GeneratorExit propagate
+without yielding while closing; RunManager finalizes interrupted active Steps.
+Cleanup errors do not replace cancellation/close; normal cleanup failures fail the
+Step. Execution/assembly state stays local, so one instance can serve several Runs.
+Developer actions and lifecycle labels remain trusted code/data.
+
+BaseEngine.stream_completion(request, response=None) calls the existing bounded
+thread transport in providers/litellm.py, whose worker invokes litellm.completion.
+The method enforces stream=True and one choice, reads dict/SDK chunks, yields text,
+assembles indexed tool-call fragments in ordinary dictionaries, and validates
+termination, duplicate IDs and size limits. An optional fresh response dictionary
+receives a completion-format assistant message only after success; it remains
+unchanged on failure/cancellation. The method itself emits no Step events and has
+no application deadline. Use run()/step() for lifecycle and deadline handling.
+It handles text/tool completion streams; usage/reasoning/multimodal outputs are
+not surfaced. It executes no tools and performs no domain persistence.
+
+copy_params() retains live SDK clients/callbacks while copying builtin containers.
+Per-call transcripts are isolated even when a cancelled provider thread is still
+finishing its network read. Base imports the lightweight transport only; LiteLLM
+is lazily imported in the worker. Non-LLM actions do not invoke/import the SDK.
+No cross-library provider abstraction, embedding or rerank operation is added.
+
+LoopEngine is the only class in engines/loop.py and inherits BaseEngine. Its
+responsibility is Project/history/prompt configuration, batch validation before
+side effects, tool execution and bounded iteration. Each completion/tool uses
+self.step(), and every completion uses the inherited stream_completion().
+PreparationStep also inherits BaseEngine; PipelineEngine composition is unchanged.
+StepManager/StepEventRecorder still persist lifecycle events, and RunManager still
+owns queues, Runs, streaming conversation writes, cancellation and recovery.
+
+This is a public API rename: engines/step.py and engines/_completion.py were removed.
+Use BaseEngine instead of StepEngine, and direct LoopEngine constructor limits
+instead of LoopOptions/options=. LoopEngineError/_Turn/_ToolCall are removed;
+validation uses ValueError/TypeError and wrapped execution uses sanitized
+RuntimeError. LLM Step errors stay 'LLM iteration failed' and tool errors stay
+'Tool execution failed'. The Engine protocol remains usable without inheritance.
+The offline examples/custom_engine.py demonstrates minimal authoring/registration;
+README also shows a minimal inherited LiteLLM completion engine.
+
+## Developer Engine Composition and Completion Parameters
+
+LoopEngine remains specifically coupled to LiteLLM completion and its chat/tool
+stream format. No cross-library model abstraction, embedding, or rerank operation
+is introduced. providers/litellm.py is the existing thread/stream transport; its
+worker directly calls litellm.completion so synchronous network reads do not block
+the event loop.
+
+LoopEngine directly accepts max_iterations, request_timeout, tool_timeout,
+buffer_size, max_tool_calls, max_argument_chars and max_output_chars. LiteLLM
+options such as max_tokens belong in the open-ended completion_kwargs mapping. A synchronous context factory may supply that mapping.
+Project config supplies defaults; explicit kwargs override them. Builtin option
+containers are copied once per Loop execution and again per provider request,
+while SDK clients/callbacks retain identity. These objects are runtime configuration,
+not persisted JSON. Explicit api_key overrides the Project credential reference.
+No parameter allowlist attempts to mirror every LiteLLM release. Loop transcript
+and tool-registry ownership remain reserved (messages/tools/functions/function_call),
+and stream=True/n=1 are required. All other options are passed to LiteLLM; newer
+response formats may still require Engine changes. Provider timeout is independent
+of the application per-round deadline. system_prompt is a string or synchronous
+context factory, prepended once to the in-memory provider transcript.
+
+EngineContext.state is a fresh dictionary per Run for preparation outputs and
+runtime handles. RunManager's context construction creates it; neither core
+models nor repositories acquire this field. Do not copy these outputs to event
+metadata by default, because they may contain documents or environment secrets.
+
+engines/pipeline.py supplies PipelineEngine(stages) and PreparationStep(name,
+action, kind=..., timeout_seconds=...). PreparationStep emits lifecycle events
+around an async action(context), with a 60-second default deadline (None disables
+it). Pipeline passes one context through its sequential stages, including nested
+pipelines. A failure, cancellation event, or unfinished Step prevents the next
+stage. Iterator cleanup is propagated; RunManager still owns Run cancellation,
+StepEventRecorder persistence, and queue/recovery semantics. Pipeline creates no
+extra Run. Actual cancellation propagates so RunManager records INTERRUPTED;
+non-success terminal events without cancellation fail the pipeline.
+
+Preparation runs after Run creation, before the Loop. Document/RAG/environment
+work delegates to developer callbacks and component services. Per-Run values use
+context.state and can be consumed by Loop parameter/prompt factories. Callbacks
+must cooperate with cancellation and offload blocking work; arbitrary side effects
+cannot be rolled back. Never mutate process-global environment for one Task.
+Use a Run-local env dictionary for subprocesses. Existing stale Runs, including
+interrupted preparation, are never replayed automatically.
+
 ## LiteLLM Loop Execution
 
 LoopEngine calls synchronous `litellm.completion(stream=True, ...)` through
@@ -269,7 +365,9 @@ as individual tool Steps. Their observations are added to the next LLM request.
 A normal `stop` response ends the Run. A `tool_calls` response starts another
 round when budget remains. Missing/abnormal finish reasons, malformed tools,
 tool failures, timeouts, and exhausted iteration budgets fail the Run. No
-engine retries are performed, and LiteLLM receives `num_retries=0`. Calls on the
+engine retries are performed. LiteLLM defaults to `num_retries=0`; developers may
+override SDK request retries through completion_kwargs without enabling tool or
+stale-Run replay. Calls on the
 last permitted iteration are not executed without a follow-up LLM round.
 Defaults are eight LLM rounds, 60 seconds per whole LLM round, and 30 seconds
 per async tool. Tool handlers must propagate cancellation and avoid blocking.
