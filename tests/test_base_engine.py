@@ -288,7 +288,7 @@ class CompletionHelperTests(unittest.IsolatedAsyncioTestCase):
         ])
         response = {}
         engine = BaseEngine(completion_fn=provider)
-        text = [part async for part in engine.stream_completion({"model": "test"}, response=response)]
+        text = [part async for part in engine.stream_completion(include_events=False, request={"model": "test"}, response=response)]
         self.assertEqual(text, ["Thinking"])
         self.assertEqual(response["role"], "assistant")
         self.assertEqual(response["content"], "Thinking")
@@ -312,7 +312,7 @@ class CompletionHelperTests(unittest.IsolatedAsyncioTestCase):
                 provider = ScriptedCompletion(chunks)
                 engine = BaseEngine(completion_fn=provider, **limits)
                 with self.assertRaises(ValueError):
-                    async for _ in engine.stream_completion({}, response=response):
+                    async for _ in engine.stream_completion(include_events=False, request={}, response=response):
                         pass
                 self.assertEqual(response, {})
 
@@ -330,7 +330,7 @@ class CompletionHelperTests(unittest.IsolatedAsyncioTestCase):
         engine = BaseEngine(completion_fn=provider)
         async def collect(label):
             response = {}
-            text = [part async for part in engine.stream_completion(
+            text = [part async for part in engine.stream_completion(include_events=False, request=
                 dict(original, label=label), response=response)]
             return text, response
         first, second = await asyncio.gather(collect("first"), collect("second"))
@@ -349,7 +349,7 @@ class CompletionHelperTests(unittest.IsolatedAsyncioTestCase):
                 closed.set()
         response = {}
         engine = BaseEngine(completion_fn=provider, buffer_size=1)
-        async with aclosing(engine.stream_completion({}, response=response)) as stream:
+        async with aclosing(engine.stream_completion(include_events=False, request={}, response=response)) as stream:
             self.assertEqual(await stream.__anext__(), "delta")
         self.assertTrue(await asyncio.to_thread(closed.wait, 5))
         self.assertEqual(response, {})
@@ -359,6 +359,6 @@ class CompletionHelperTests(unittest.IsolatedAsyncioTestCase):
         engine = BaseEngine(completion_fn=provider)
         for request in ({"stream": False}, {"n": 2}):
             with self.subTest(request=request), self.assertRaises(ValueError):
-                async for _ in engine.stream_completion(request):
+                async for _ in engine.stream_completion(include_events=False, request=request):
                     pass
         self.assertEqual(provider.requests, [])

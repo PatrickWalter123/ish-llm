@@ -10,6 +10,8 @@ from .storage import atomic_json, child, read_json, record, remove_owned_tree
 from .tasks import TaskManager
 from .logging import log_event
 from .access import ProjectAccess
+from .results import RunResultQuery
+from .components import ComponentData
 from .locking import WorkspaceOwnership, workspace_locked
 from ish.components.registry import ComponentRegistry
 
@@ -28,6 +30,7 @@ class ProjectRepository:
 
     @workspace_locked
     def save(self, project: Project) -> None:
+        project.config.validate()
         data = record(project)
         data["config"] = asdict(project.config)
         atomic_json(project.paths.root / "project.json", data)
@@ -44,7 +47,7 @@ class ProjectRepository:
         if not isinstance(selected, list) or any(not isinstance(name, str) for name in selected):
             raise ValueError("Invalid Project component selection")
         return Project(**{**data, "components": tuple(selected),
-                          "config": ProjectConfig(**data["config"]), "paths": paths})
+                          "config": ProjectConfig.from_dict(data["config"]), "paths": paths})
 
     @workspace_locked
     def delete(self, project: Project) -> None:
@@ -70,6 +73,7 @@ class ProjectManager:
         self.repository = repository
         self.tasks = tasks
         self.access = ProjectAccess(repository)
+        self.results = RunResultQuery(tasks)
         self.ownership = repository.ownership
         self.tasks.bind_project_access(self.access)
         self.components = components if components is not None else ComponentRegistry()
@@ -117,6 +121,35 @@ class ProjectManager:
     def configure_component(self, project: Project, name: str, configuration: dict) -> None:
         current = self.access.require(project)
         self.components.configure(current, name, configuration)
+
+    @workspace_locked
+    def component(self, project: Project, name: str) -> ComponentData:
+        current = self.access.require(project)
+        self.components.validate(current.components)
+        if name not in current.components:
+            raise ValueError("Component is not enabled for this Project")
+        return ComponentData(self.access, self.components, current, name)
+
+    @workspace_locked
+    def remove_component(self, project: Project, name: str, *, permanent: bool = False) -> None:
+        """Disable by default; permanent removal also deletes its owned directory."""
+        if type(permanent) is not bool:
+            raise TypeError("permanent must be a bool")
+        current = self.access.require(project)
+        component = self.components.get(name)
+        if permanent:
+            for task in self.tasks.list(current, include_deleted=True):
+                self.tasks.require_inactive(task)
+        current.components = tuple(item for item in current.components if item != name)
+        self.components.validate(current.components)
+        # Publish disabled state first: interrupted removal must not leave a
+        # selected component exposing partially deleted definitions to new Runs.
+        self.repository.save(current)
+        project.components = current.components
+        if permanent:
+            component.delete_directory(current)
+        log_event(current.paths.logs, "component.removed", entity_id=current.id,
+                  permanent=permanent)
 
     @workspace_locked
     def load(self, project_id: str) -> Project:

@@ -5,7 +5,7 @@ import re
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from ish.compat import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from jsonschema import Draft202012Validator
 
@@ -16,6 +16,8 @@ class Tool:
     description: str
     parameters: dict[str, Any]
     handler: Callable[[dict[str, Any]], Awaitable[Any]]
+    # Optional native definition preserves provider extensions such as strict.
+    definition: Optional[dict[str, Any]] = None
 
 
 class ToolRegistry:
@@ -42,16 +44,33 @@ class ToolRegistry:
                     check_refs(item)
         check_refs(schema)
         Draft202012Validator.check_schema(schema)
-        self._tools[tool.name] = Tool(tool.name, tool.description, schema, tool.handler)
+        definition = deepcopy(tool.definition)
+        if definition is not None:
+            function = definition.get("function", {})
+            if (definition.get("type") != "function" or function.get("name") != tool.name
+                    or function.get("parameters") != schema
+                    or function.get("description", "") != tool.description):
+                raise ValueError("Tool definition does not match its runtime binding")
+            json.dumps(definition, allow_nan=False)
+        self._tools[tool.name] = Tool(tool.name, tool.description, schema, tool.handler, definition)
 
     def definitions(self) -> list[dict[str, Any]]:
-        return [{"type": "function", "function": {
+        return [deepcopy(tool.definition) if tool.definition is not None else {"type": "function", "function": {
             "name": tool.name, "description": tool.description,
             "parameters": deepcopy(tool.parameters),
         }} for tool in self._tools.values()]
 
     def names(self) -> tuple[str, ...]:
         return tuple(self._tools)
+
+    def get(self, name: str) -> Tool:
+        """Detached definition with the application-owned handler identity."""
+        try:
+            tool = self._tools[name]
+        except KeyError:
+            raise ValueError("Tool handler is unavailable") from None
+        return Tool(tool.name, tool.description, deepcopy(tool.parameters), tool.handler,
+                    deepcopy(tool.definition))
 
     def select(self, names: tuple[str, ...]) -> "ToolRegistry":
         if len(set(names)) != len(names):

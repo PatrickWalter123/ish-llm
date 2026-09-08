@@ -1,4 +1,6 @@
 from typing import Optional
+import json
+from copy import deepcopy
 from dataclasses import field
 from ish.compat import dataclass
 from datetime import datetime, timezone
@@ -64,17 +66,92 @@ class StepStatus(StrEnum):
 
 
 # ---------------------------------------------------------------------------
-# Project: persistent workspace and provider configuration
+# Project: extensible, JSON-only configuration passed to Tasks and Engines
 # ---------------------------------------------------------------------------
 
 @dataclass(slots=True)
 class ProjectConfig:
-    model: str = ""
-    temperature: Optional[float] = 0.7
     default_engine: str = "loop"
-    # Only a reference may be stored here; actual credentials need SecretManager.
-    credential_ref: Optional[str] = None
-    api_base: Optional[str] = None
+    completion: dict = field(default_factory=dict)
+    engines: dict = field(default_factory=dict)
+    task_defaults: dict = field(default_factory=dict)
+    data: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.validate()
+
+    @staticmethod
+    def validate_settings(value: dict) -> None:
+        """Reject runtime objects, lossy JSON keys and persisted credentials."""
+        if not isinstance(value, dict):
+            raise TypeError("Settings must be a dictionary")
+
+        def check(item):
+            if isinstance(item, dict):
+                for key, nested in item.items():
+                    if not isinstance(key, str):
+                        raise TypeError("Settings keys must be strings")
+                    if key.lower() in {"api_key", "authorization", "password", "credentials",
+                                      "access_token", "secret_key", "api_token"}:
+                        raise ValueError("Credentials belong in the environment or runtime arguments")
+                    check(nested)
+            elif isinstance(item, list):
+                for nested in item:
+                    check(nested)
+            elif item is not None and not isinstance(item, (str, bool, int, float)):
+                raise TypeError("Settings must contain only JSON values")
+
+        check(value)
+        json.dumps(value, allow_nan=False)
+
+    def validate(self) -> None:
+        if not isinstance(self.default_engine, str) or not self.default_engine.strip():
+            raise ValueError("Default Engine must be a nonempty string")
+        for section in (self.completion, self.engines, self.task_defaults, self.data):
+            self.validate_settings(section)
+        if any(not isinstance(options, dict) for options in self.engines.values()):
+            raise TypeError("Each Engine configuration must be a dictionary")
+        self.validate_task(self.task_defaults)
+
+    @classmethod
+    def validate_task(cls, config: dict) -> None:
+        cls.validate_settings(config)
+        for name in ("completion", "engines", "data"):
+            if name in config and not isinstance(config[name], dict):
+                raise TypeError("Task configuration sections must be dictionaries")
+        if any(not isinstance(options, dict) for options in config.get("engines", {}).values()):
+            raise TypeError("Each Engine configuration must be a dictionary")
+
+    @staticmethod
+    def merge(defaults: dict, overrides: dict) -> dict:
+        """Recursively merge dictionaries; lists/scalars replace the default."""
+        result = deepcopy(defaults)
+        for key, value in overrides.items():
+            result[key] = (ProjectConfig.merge(result[key], value)
+                           if isinstance(result.get(key), dict) and isinstance(value, dict)
+                           else deepcopy(value))
+        return result
+
+    def for_engine(self, name: str, task_config: Optional[dict] = None) -> dict:
+        """Return an isolated Project + Task settings snapshot for one Engine."""
+        task_config = task_config if task_config is not None else {}
+        self.validate_task(task_config)
+        return {
+            "completion": self.merge(self.completion, task_config.get("completion", {})),
+            "engine": self.merge(self.engines.get(name, {}), task_config.get("engines", {}).get(name, {})),
+            "data": self.merge(self.data, task_config.get("data", {})),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ProjectConfig":
+        """Load current settings and migrate the former flat provider fields."""
+        data = deepcopy(data)
+        completion = data.pop("completion", {})
+        legacy = {key: data.pop(key) for key in ("model", "temperature", "api_base") if key in data}
+        data.pop("credential_ref", None)  # Obsolete references are never resolved.
+        known = {key: data.pop(key) for key in ("default_engine", "engines", "task_defaults") if key in data}
+        custom = data.pop("data", {})
+        return cls(completion=cls.merge(legacy, completion), data=cls.merge(data, custom), **known)
 
 
 @dataclass(slots=True)
@@ -104,6 +181,7 @@ class Task:
     current_run_id: Optional[str] = None
     created_at: str = field(default_factory=now)
     metadata: dict = field(default_factory=dict)
+    config: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

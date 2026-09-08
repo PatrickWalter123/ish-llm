@@ -25,7 +25,6 @@ from ish.components.registry import ComponentRegistry
 from ish.services.conversation import ConversationStore
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager
-from ish.services.secrets import SecretManager
 from ish.services.tasks import TaskManager
 
 
@@ -68,8 +67,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.tasks = TaskManager()
         self.components = ComponentRegistry()
         self.projects = ProjectManager(ProjectRepository(Path(self.temporary.name)), self.tasks, components=self.components)
-        self.project = self.projects.create("Loop project", config=ProjectConfig(
-            model="openai/test-model", default_engine="loop", temperature=None))
+        self.project = self.projects.create("Loop project", config=ProjectConfig(default_engine="loop", completion={'model': "openai/test-model"}))
         self.task = self.tasks.create(self.project, "Loop task")
         self.store = ConversationStore(self.task.paths.conversation)
         self.registry = EngineRegistry()
@@ -139,13 +137,12 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
                 yield chunk(" 답변", finish="stop")
             finally:
                 closed.set()
-        self.project.config.api_base = "http://localhost:8000/v1"
-        self.project.config.credential_ref = "env:ISH_TEST_API_KEY"
+        self.project.config.completion["api_base"] = "http://localhost:8000/v1"
         self.projects.save(self.project)
-        self.engine(completion_fn, completion_kwargs={"max_tokens": 100})
+        self.engine(completion_fn, completion_kwargs={"max_tokens": 100, "api_key": "secret-test-value"})
         with patch.dict(os.environ, {"ISH_TEST_API_KEY": "secret-test-value"}):
             await self.manager.submit(self.project, self.task, "question")
-            await self.until(lambda: len(self.events) >= 2)
+            await self.until(lambda: any(event.type == EngineEventType.TEXT_DELTA for event in self.events))
             self.assertEqual(self.output(), "첫")
             self.assertEqual(self.run_status(), RunStatus.RUNNING)
             self.assertNotEqual(thread_ids[0], threading.get_ident())
@@ -226,7 +223,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(completion_fn.requests, [])
 
     async def test_explicit_model_works_without_project_model(self):
-        self.project.config.model = ""
+        self.project.config.completion["model"] = ""
         self.projects.save(self.project)
         completion_fn = ScriptedCompletion([chunk("done", finish="stop")])
         self.engine(completion_fn, completion_kwargs={"model": "openai/explicit"})
@@ -454,15 +451,12 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.output(), "partial")
         self.assertEqual(self.run_status(), RunStatus.FAILED)
 
-    async def test_missing_credential_does_not_call_provider(self) -> None:
-        completion_fn = ScriptedCompletion()
-        self.project.config.credential_ref = "env:ISH_MISSING_TEST_CREDENTIAL"
-        self.projects.save(self.project)
-        self.engine(completion_fn)
-        with patch.dict(os.environ, {}, clear=True):
-            await self.submit()
-        self.assertEqual(self.run_status(), RunStatus.FAILED)
-        self.assertEqual(completion_fn.requests, [])
+    async def test_sdk_environment_authentication_is_left_to_provider(self) -> None:
+        provider = ScriptedCompletion([chunk("answer", finish="stop")])
+        self.engine(provider)
+        await self.submit()
+        self.assertEqual(self.run_status(), RunStatus.COMPLETED)
+        self.assertNotIn("api_key", provider.requests[0])
 
     async def test_object_chunks_empty_content_and_usage_are_supported(self) -> None:
         object_chunk = SimpleNamespace(choices=[SimpleNamespace(
@@ -534,6 +528,9 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
                                 finish="tool_calls")]
             else:
                 events = [chunk("The result is "), chunk("5."), chunk(finish="stop")]
+            events.append({"choices": [], "usage": {
+                "prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5,
+            }})
             return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=SSE(events))
         with httpx.Client(transport=httpx.MockTransport(handle)) as http_client:
             client = OpenAI(api_key="offline-test", base_url="https://llm.invalid/v1",
@@ -551,6 +548,9 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(request["max_tokens"] == 32 for request in requests))
         self.assertEqual(requests[1]["messages"][-1]["role"], "tool")
         self.assertEqual(len(closed), 2)
+        result = self.projects.results.load(self.project, self.manager.runs.list(self.task)[0].id)
+        self.assertEqual(result.total_tokens, 10)
+        self.assertEqual(result.finish_reasons, ["tool_calls", "stop"])
 
 
 class StreamBridgeTests(unittest.IsolatedAsyncioTestCase):
@@ -587,11 +587,6 @@ class ConfigurationTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 LoopEngine(**kwargs)
 
-    def test_secrets_only_resolve_environment_references(self) -> None:
-        with patch.dict(os.environ, {"ISH_SECRET": "value"}):
-            self.assertEqual(SecretManager().resolve("env:ISH_SECRET"), "value")
-        with self.assertRaises(ValueError):
-            SecretManager().resolve("literal-secret")
 
     def test_schema_and_nonfinite_arguments_rejected(self) -> None:
         async def handler(arguments):

@@ -17,6 +17,7 @@ from ish.core.models import (
     Step, StepStatus, Task, TaskStatus,
 )
 from ish.core.paths import ProjectPaths
+from ish.core.results import CompletionResult, ExecutionResult
 from ish.engines.base import BaseEngine, EngineContext, EngineEvent, EngineEventType
 from ish.engines.loop import LoopEngine
 from ish.services.projects import ProjectManager, ProjectRepository
@@ -37,7 +38,7 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_public_model_type_hints_resolve_on_python39(self) -> None:
         for model in (Project, ProjectConfig, Task, Message, Run, Step, TaskRuntime,
-                      EngineEvent, EngineContext):
+                      EngineEvent, EngineContext, CompletionResult, ExecutionResult):
             with self.subTest(model=model.__name__):
                 hints = get_type_hints(model)
                 self.assertTrue({field.name for field in fields(model)} <= hints.keys())
@@ -49,8 +50,8 @@ class CompatibilityTests(unittest.TestCase):
     def test_dataclass_defaults_frozen_copy_and_field_only_persistence(self) -> None:
         config = ProjectConfig()
         clone = deepcopy(config)
-        clone.model = "different"
-        self.assertEqual(config.model, "")
+        clone.completion["model"] = "different"
+        self.assertEqual(config.completion, {})
         event = EngineEvent(EngineEventType.TEXT_DELTA, text="hello")
         self.assertEqual(deepcopy(event), event)
         with self.assertRaises(FrozenInstanceError):

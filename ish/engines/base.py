@@ -4,19 +4,23 @@ import asyncio
 import inspect
 import json
 import math
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from copy import deepcopy
-from dataclasses import field
+from dataclasses import field, replace
 from typing import Any, Optional, Protocol, Union
 
 from ish.compat import StrEnum, aclosing, dataclass, timeout
-from ish.core.models import Message, Project, Run, Task, new_id
+from ish.core.models import Message, Project, Run, RunStatus, Task, new_id, now
+from ish.core.results import CompletionResult
 from ish.components.tools import ToolRegistry
 from ish.providers.litellm import completion, stream_completion
+from ish.providers.parameters import copy_params
 
 
 class EngineEventType(StrEnum):
     TEXT_DELTA = "text_delta"
+    COMPLETION = "completion"
     STEP_STARTED = "step_started"
     STEP_COMPLETED = "step_completed"
     STEP_FAILED = "step_failed"
@@ -33,6 +37,7 @@ class EngineEvent:
     name: str = ""
     metadata: dict = field(default_factory=dict)
     error: Optional[str] = None
+    completion: Optional[CompletionResult] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +50,9 @@ class EngineContext:
     tools: ToolRegistry = field(default_factory=ToolRegistry)
     # Preparation outputs and handles for this Run only; never persisted.
     state: dict[str, Any] = field(default_factory=dict)
+
+    def settings(self, engine: str) -> dict:
+        return self.project.config.for_engine(engine, self.task.config)
 
 
 class Engine(Protocol):
@@ -75,7 +83,7 @@ class BaseEngine:
 
     def __init__(self, name: str = "Step", *, kind: str = "custom",
                  action: Optional[Callable[[EngineContext],
-                     Union[AsyncIterator[str], Awaitable[None]]]] = None,
+                     Union[AsyncIterator[Union[str, EngineEvent]], Awaitable[None]]]] = None,
                  timeout_seconds: Optional[float] = None,
                  metadata: Optional[dict] = None,
                  error_message: str = "Step execution failed",
@@ -113,7 +121,7 @@ class BaseEngine:
         self.max_output_chars = max_output_chars
 
     def step(self, context: EngineContext,
-             action: Callable[[EngineContext], Union[AsyncIterator[str], Awaitable[None]]], *,
+             action: Callable[[EngineContext], Union[AsyncIterator[Union[str, EngineEvent]], Awaitable[None]]], *,
              name: str, kind: str = "custom", timeout_seconds: Optional[float] = None,
              metadata: Optional[dict] = None,
              error_message: str = "Step execution failed") -> AsyncIterator[EngineEvent]:
@@ -128,13 +136,7 @@ class BaseEngine:
     @staticmethod
     def copy_params(value: Any) -> Any:
         """Copy builtin option containers, keeping live SDK clients/callbacks intact."""
-        if isinstance(value, dict):
-            return {key: BaseEngine.copy_params(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [BaseEngine.copy_params(item) for item in value]
-        if isinstance(value, tuple):
-            return tuple(BaseEngine.copy_params(item) for item in value)
-        return value
+        return copy_params(value)
 
     @staticmethod
     def chunk_value(value: Any, key: str, default: Any = None) -> Any:
@@ -142,19 +144,69 @@ class BaseEngine:
         return value.get(key, default) if isinstance(value, Mapping) else getattr(value, key, default)
 
     async def stream_completion(self, request: Mapping[str, Any], *,
-                                response: Optional[dict] = None) -> AsyncIterator[str]:
-        """Yield text deltas and optionally fill an assistant message on success.
+                                response: Optional[dict] = None,
+                                include_events: bool = True) -> AsyncIterator[Union[str, EngineEvent]]:
+        """Yield text and completion observations; inherited execute() routes both.
 
-        Handles one LiteLLM streaming choice, fragmented tool calls, and finish
-        validation. Tool execution is the subclass's responsibility. All assembly
-        state is local to this call. response is runtime-only, never persisted.
-        Consume under aclosing() when forwarding deltas from run()/execute().
+        include_events=False is for standalone text consumers without persistence.
+        response receives the assistant message on success only. Observations
+        contain no prompts, tool arguments, headers, or arbitrary SDK payloads.
         """
+        result = CompletionResult(model=request.get("model") if isinstance(request.get("model"), str) else None)
+        started = time.monotonic()
+        if include_events:
+            yield EngineEvent(EngineEventType.COMPLETION, completion=deepcopy(result))
+        try:
+            async with aclosing(self._stream_completion(request, response, result)) as stream:
+                async for item in stream:
+                    if include_events or isinstance(item, str):
+                        yield item
+        except (asyncio.CancelledError, GeneratorExit):
+            # RunManager finalizes the last durable observation; never yield here.
+            raise
+        except Exception:
+            result.status = RunStatus.FAILED
+            result.ended_at = now()
+            result.duration_seconds = time.monotonic() - started
+            if include_events:
+                yield EngineEvent(EngineEventType.COMPLETION, completion=deepcopy(result))
+            raise
+        else:
+            result.status = RunStatus.COMPLETED
+            result.ended_at = now()
+            result.duration_seconds = time.monotonic() - started
+            if include_events:
+                yield EngineEvent(EngineEventType.COMPLETION, completion=deepcopy(result))
+
+    @staticmethod
+    def _usage(value: Any) -> dict:
+        if callable(getattr(value, "model_dump", None)):
+            value = value.model_dump()
+        if not isinstance(value, Mapping):
+            return {}
+        result = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                continue
+            if type(item) is int and item >= 0:
+                result[key] = item
+            elif isinstance(item, Mapping) or callable(getattr(item, "model_dump", None)):
+                nested = BaseEngine._usage(item)
+                if nested:
+                    result[key] = nested
+        return result
+
+    async def _stream_completion(self, request: Mapping[str, Any], response: Optional[dict],
+                                 result: CompletionResult) -> AsyncIterator[Union[str, EngineEvent]]:
         params = self.copy_params(dict(request))
         if params.get("stream", True) is not True or params.get("n", 1) != 1:
             raise ValueError("Completion requires stream=True and n=1")
         params["stream"] = True
         params.setdefault("num_retries", 0)
+        if "stream_options" not in params:
+            params["stream_options"] = {"include_usage": True}
+        elif isinstance(params["stream_options"], dict):
+            params["stream_options"].setdefault("include_usage", True)
         if response is not None and not isinstance(response, dict):
             raise TypeError("Completion response must be a dictionary")
         content_parts: list[str] = []
@@ -166,6 +218,20 @@ class BaseEngine:
             params, completion_fn=self.completion_fn, buffer_size=self.buffer_size,
         )) as chunks:
             async for chunk in chunks:
+                changed = False
+                for attribute, key in (("response_id", "id"), ("model", "model")):
+                    value = get(chunk, key)
+                    if isinstance(value, str) and value != getattr(result, attribute):
+                        setattr(result, attribute, value)
+                        changed = True
+                usage = self._usage(get(chunk, "usage"))
+                if usage:
+                    updated = {**result.usage, **usage}
+                    if updated != result.usage:
+                        result.usage = updated
+                        changed = True
+                if changed:
+                    yield EngineEvent(EngineEventType.COMPLETION, completion=deepcopy(result))
                 choices = get(chunk, "choices", [])
                 if not choices:
                     continue  # Optional usage-only chunk; no text to deliver.
@@ -215,8 +281,12 @@ class BaseEngine:
                     if finish_reason is not None and finish_reason != reason:
                         raise ValueError("Conflicting stream termination")
                     finish_reason = reason
+                    if result.finish_reason != reason:
+                        result.finish_reason = reason
+                        yield EngineEvent(EngineEventType.COMPLETION, completion=deepcopy(result))
                 if content:
                     yield content
+        result.usage_complete = bool(result.usage)
         if finish_reason not in ("stop", "tool_calls"):
             raise ValueError("Completion did not finish normally")
         if bool(calls) != (finish_reason == "tool_calls"):
@@ -231,7 +301,7 @@ class BaseEngine:
             if calls:
                 response["tool_calls"] = [calls[index] for index in sorted(calls)]
 
-    def run(self, context: EngineContext) -> Union[AsyncIterator[str], Awaitable[None]]:
+    def run(self, context: EngineContext) -> Union[AsyncIterator[Union[str, EngineEvent]], Awaitable[None]]:
         """Override with async def; yield text, or await work and return None."""
         if self.action is None:
             raise NotImplementedError("Implement run(context) or provide action=")
@@ -252,6 +322,12 @@ class BaseEngine:
                 else:
                     try:
                         async for text in operation:
+                            if isinstance(text, EngineEvent) and text.type == EngineEventType.COMPLETION:
+                                if text.completion is None:
+                                    raise ValueError("Completion event requires a result")
+                                yield replace(text, step_id=step_id,
+                                              completion=replace(text.completion, step_id=step_id))
+                                continue
                             if not isinstance(text, str):
                                 raise TypeError("Step streams must yield strings")
                             if text:

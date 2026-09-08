@@ -56,12 +56,7 @@ async def main():
     try:
         project = project_manager.create(
 			"개발 프로젝트",
-			config=ProjectConfig(
-				model="openai/gpt-4o-mini",
-				default_engine="loop",
-				credential_ref="env:OPENAI_API_KEY",
-				temperature=None,
-			),
+			config=ProjectConfig(default_engine="loop", completion={'model': "openai/gpt-4o-mini"}),
 		)
         task = task_manager.create(
 			project,

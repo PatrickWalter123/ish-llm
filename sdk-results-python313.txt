@@ -1,0 +1,7 @@
+test_real_litellm_sdk_with_mock_http_sse_and_tool_loop (tests.test_loop.LoopTests.test_real_litellm_sdk_with_mock_http_sse_and_tool_loop) ... ok
+test_public_model_type_hints_resolve_on_python39 (tests.test_compat.CompatibilityTests.test_public_model_type_hints_resolve_on_python39) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 7.074s
+
+OK

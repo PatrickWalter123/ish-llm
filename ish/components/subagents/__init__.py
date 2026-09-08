@@ -1,1 +1,5 @@
-"""Reserved for sub-agent definition CRUD and runtime execution adapters."""
+"""Specialized LLM definition CRUD for application workflows."""
+
+from .component import SubagentComponent
+
+__all__ = ["SubagentComponent"]

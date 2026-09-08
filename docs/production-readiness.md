@@ -1,6 +1,6 @@
 # Production readiness assessment
 
-Assessed 2026-09-08 after moving the authoring API and LiteLLM chunk handling into BaseEngine.
+Assessed 2026-09-08 after generic Project component storage and runtime Tool adapter separation.
 
 ## Decision
 
@@ -26,8 +26,8 @@ Python 3.13.7 / LiteLLM 1.100.0:
 .\.venv39\Scripts\python.exe -m ish.demo --help
 ```
 
-All 157 tests passed on Python 3.9.13 in 79.259 seconds and on Python 3.13.7 in
-92.817 seconds. Compilation of ish/tests/examples and the offline custom Engine
+All 191 tests passed on Python 3.9.13 in 128.472 seconds and on Python 3.13.7 in
+116.750 seconds. Compilation of ish/tests/examples and the offline custom Engine
 example passed on both. Dependency consistency and demo import/argument parsing
 passed during the preceding validation. Full suite outputs are `test-results-python39.txt` and
 `test-results-python313.txt` at the repository root. Tests use temporary directories and
@@ -66,7 +66,7 @@ are not sustained-throughput or deployment latency guarantees.
 | Permanent deletion | Complete preflight rejects linked/escaping paths, but validation and recursive removal are separate. Noncooperating writers can change the tree, and an I/O error can leave a partially removed tree. | Ownership is implemented; deletion journal/tombstone strategy and recovery tests for partial failures. Back up valuable data before using irreversible removal. |
 | Provider cancellation | Cancelling a Run stops delta delivery; Python cannot forcibly cancel a synchronous network read. Daemon cleanup threads survive until reads return/time out. | Verify each deployed provider's timeout behavior, bound outstanding cleanup work, and add long-running cancellation/resource tests. |
 | Tool safety and history | Project-specific enabled tool names now constrain each Run, including Projects sharing a LoopEngine. Registered Python handlers remain trusted and have no OS sandbox. Structured calls/results still exist only during the Run. | Durable structured conversation events, OS/resource permission policy and isolation, side-effect/idempotency tests. Never automatically replay stale Runs. |
-| Logs and secrets | Logs exclude conversation/credential content through allowlisted fields, but are best effort and share the data filesystem. Environment references are the only SecretManager backend. | Decide on centralized logs/metrics, storage retention and access controls, alerting, and a secret backend. These service logs do not govern the provider SDK's own diagnostics. |
+| Logs and secrets | Logs exclude conversation/credential content through allowlisted fields, but are best effort and share the data filesystem. Authentication uses the SDK environment or runtime-only arguments. | Decide on centralized logs/metrics, storage retention and access controls, alerting, and deployment credential handling. These service logs do not govern the provider SDK's own diagnostics. |
 | Release validation | Python 3.9 runtime versions are captured in `constraints-python39.txt`; newer interpreters still use dependency ranges. Linux/live-provider verification was not performed. Backup, migrations, and schema version coordination are deferred. | Validate and maintain dependencies for each deployment target, Linux CI, supported-provider smoke tests, backup/restore and upgrade tests, operational runbooks. |
 
 ## Scope still planned
@@ -75,18 +75,32 @@ LoopEngine, the common BaseEngine authoring API, and sequential
 PipelineEngine/PreparationStep are implemented. BaseEngine lifecycle events,
 sanitized errors, cancellation, timeout, iterator cleanup, and shared-instance
 isolation plus inherited completion/chunk handling are covered by 19 authoring
-tests. Existing Loop tests also exercise the shared parser through the actual
-LiteLLM SDK with mock SSE. Arbitrary developer actions remain
+tests. Fourteen configuration/result tests cover settings precedence, migration,
+recovery, clone/delete policy, usage aggregation, Task/Project queries, legacy
+summary isolation and partial failures. Seven inference tests cover argument
+forwarding, native responses/errors, concurrency, cancellation, SDK dispatch and
+module import boundaries.
+Existing Loop tests also exercise the shared parser through the actual LiteLLM
+SDK with mock SSE, including usage-only chunks and persisted aggregate token counts.
+Execution result views are computed from Run-owned observations; no separate
+Project summary is persisted. These observations are not a verified billing ledger.
+Embedding/rerank clients forward to the installed SDK's async API; injected calls
+verify parameter forwarding/cancellation. Live embedding/rerank providers were not
+called, and native response usage is not automatically recorded as completion usage. Arbitrary developer actions remain
 trusted code; the helper does not provide a sandbox or change the decision above.
-SingleEngine, GraphEngine, embedding/rerank engines, and a TUI are not.
+SingleEngine, GraphEngine and a TUI are not implemented. Embedding/rerank are
+reusable inference clients, not planned Engine strategies.
 Python 3.9 compatibility does not change the production decision above. Its
 older LiteLLM version needs its own provider-compatibility and dependency
 maintenance plan. Python 3.9 dataclasses also have a `__dict__` instead of native
 slots; persistence still serializes only declared fields.
-`components/rag`, `mcp`, `skills`, and `subagents` reserve locations for future
-CRUD/adapters. Workflows has a directory initializer, and tools has Project
-enabled-name configuration plus a runtime handler catalog; general definition
-CRUD and structured tool transcripts are still planned. Missing optional engines/components do not prevent a LoopEngine pilot,
+`components/rag`, `mcp`, and `skills` reserve locations for future adapters.
+Component supplies declared directories, open JSON configuration/record CRUD and
+clone. Tools, Subagents and Workflows inherit it; native tool definitions bind to
+trusted runtime handlers. Graph semantics/execution, subagent execution adapters,
+indexes and structured tool transcripts remain planned. The 15 new tests cover
+component CRUD/codecs, atomic failures, lifecycle/locks, directory safety, legacy
+workflow compatibility, clone policy and stored tool definitions through LoopEngine. Missing optional engines/components do not prevent a LoopEngine pilot,
 but must not be presented as shipped features.
 
 UI observer exceptions are isolated through RunEventPublisher, though a blocking

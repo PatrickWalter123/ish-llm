@@ -2,13 +2,13 @@
 
 import json
 import math
+from copy import copy
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from typing import Any, Optional, Union
 from urllib.parse import urlsplit
 
 from ish.compat import aclosing
 from ish.core.models import MessageRole, MessageStatus
-from ish.services.secrets import SecretManager, SecretResolver
 from ish.providers.litellm import completion
 from .base import BaseEngine, EngineContext, EngineEvent
 
@@ -16,15 +16,26 @@ from .base import BaseEngine, EngineContext, EngineEvent
 class LoopEngine(BaseEngine):
     """LiteLLM completion/tool loop with runtime kwargs and optional preparation inputs."""
 
-    def __init__(self, *, secrets: Optional[SecretResolver] = None,
-                 max_iterations: int = 8, request_timeout: float = 60.0,
-                 tool_timeout: float = 30.0, buffer_size: int = 8,
-                 max_tool_calls: int = 16, max_argument_chars: int = 65536,
-                 max_output_chars: int = 1_000_000,
+    def __init__(self, *, max_iterations: Optional[int] = None,
+                 request_timeout: Optional[float] = None, tool_timeout: Optional[float] = None,
+                 buffer_size: Optional[int] = None, max_tool_calls: Optional[int] = None,
+                 max_argument_chars: Optional[int] = None, max_output_chars: Optional[int] = None,
                  completion_kwargs: Optional[Union[Mapping[str, Any],
                      Callable[[EngineContext], Mapping[str, Any]]]] = None,
                  system_prompt: Optional[Union[str, Callable[[EngineContext], str]]] = None,
                  completion_fn: Callable[..., Iterator[Any]] = completion) -> None:
+        supplied = {"max_iterations": max_iterations, "request_timeout": request_timeout,
+                    "tool_timeout": tool_timeout, "buffer_size": buffer_size,
+                    "max_tool_calls": max_tool_calls, "max_argument_chars": max_argument_chars,
+                    "max_output_chars": max_output_chars}
+        self._overrides = {key: value for key, value in supplied.items() if value is not None}
+        max_iterations = 8 if max_iterations is None else max_iterations
+        request_timeout = 60.0 if request_timeout is None else request_timeout
+        tool_timeout = 30.0 if tool_timeout is None else tool_timeout
+        buffer_size = 8 if buffer_size is None else buffer_size
+        max_tool_calls = 16 if max_tool_calls is None else max_tool_calls
+        max_argument_chars = 65536 if max_argument_chars is None else max_argument_chars
+        max_output_chars = 1_000_000 if max_output_chars is None else max_output_chars
         super().__init__("Loop", completion_fn=completion_fn, buffer_size=buffer_size,
                          max_tool_calls=max_tool_calls, max_argument_chars=max_argument_chars,
                          max_output_chars=max_output_chars)
@@ -34,7 +45,6 @@ class LoopEngine(BaseEngine):
             if (isinstance(value, bool) or not isinstance(value, (int, float))
                     or not math.isfinite(value) or value <= 0):
                 raise ValueError("Timeouts must be positive and finite")
-        self.secrets = secrets
         self.max_iterations = max_iterations
         self.request_timeout = request_timeout
         self.tool_timeout = tool_timeout
@@ -49,15 +59,10 @@ class LoopEngine(BaseEngine):
         self.system_prompt = system_prompt
 
     def _request(self, context: EngineContext, params: dict[str, Any]) -> dict[str, Any]:
-        config = context.project.config
         request: dict[str, Any] = {
-            "model": config.model, "stream": True, "timeout": self.request_timeout,
+            "stream": True, "timeout": self.request_timeout,
             "num_retries": 0,
         }
-        if config.temperature is not None:
-            request["temperature"] = config.temperature
-        if config.api_base is not None:
-            request["api_base"] = config.api_base
         request.update(self.copy_params(params))
         if not isinstance(request.get("model"), str) or not request["model"].strip():
             raise ValueError("Completion model is required")
@@ -66,13 +71,6 @@ class LoopEngine(BaseEngine):
             if (url.scheme not in ("http", "https") or not url.hostname or url.username
                     or url.password or url.query or url.fragment):
                 raise ValueError("api_base must be an HTTP URL without credentials or query")
-        if config.credential_ref is not None and "api_key" not in request:
-            try:
-                resolver = self.secrets if self.secrets is not None else SecretManager(
-                    log_dir=context.project.paths.logs)
-                request["api_key"] = resolver.resolve(config.credential_ref)
-            except Exception:
-                raise ValueError("Credential could not be resolved") from None
         definitions = context.tools.definitions()
         if definitions:
             request["tools"] = definitions
@@ -80,6 +78,29 @@ class LoopEngine(BaseEngine):
         return request
 
     async def execute(self, context: EngineContext) -> AsyncIterator[EngineEvent]:
+        settings = context.settings("loop")
+        supplied = self.completion_kwargs(context) if callable(self.completion_kwargs) else self.completion_kwargs
+        if supplied is not None and (not isinstance(supplied, Mapping)
+                                     or any(not isinstance(key, str) for key in supplied)):
+            raise ValueError("Completion parameters must be a string-keyed mapping")
+        params = settings["completion"]
+        params.update(self.copy_params(dict(supplied or {})))
+        limits = {name: settings["engine"][name] for name in (
+            "max_iterations", "request_timeout", "tool_timeout", "buffer_size",
+            "max_tool_calls", "max_argument_chars", "max_output_chars",
+        ) if name in settings["engine"]}
+        limits.update(self._overrides)
+        prompt = self.system_prompt if self.system_prompt is not None else settings["engine"].get("system_prompt")
+        # A Run-local instance keeps shared defaults immutable and preserves
+        # subclass methods. Only Loop-owned settings are reinitialized.
+        worker = copy(self)
+        LoopEngine.__init__(worker, **limits, completion_kwargs=params,
+                            system_prompt=prompt, completion_fn=self.completion_fn)
+        async with aclosing(worker._execute(context)) as events:
+            async for event in events:
+                yield event
+
+    async def _execute(self, context: EngineContext) -> AsyncIterator[EngineEvent]:
         # Evaluate factories after preparation, once per Run. No shared per-Run
         # state lives on the Engine; each provider call gets fresh containers.
         supplied = (self.completion_kwargs(context) if callable(self.completion_kwargs)

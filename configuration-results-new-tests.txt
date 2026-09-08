@@ -1,0 +1,17 @@
+test_clone_copies_config_but_does_not_duplicate_execution_history (tests.test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-1' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x00000213244C6460>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.281 seconds
+ok
+test_completion_metadata_usage_only_chunks_and_no_payload_leak (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_configuration_validation_runs_before_create_and_save (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_failure_keeps_finish_reason_and_non_llm_engines_have_summary (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_flexible_config_persists_inherits_and_runtime_options_win (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_interrupt_preserves_observed_usage_without_claiming_final_total (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_legacy_configuration_and_custom_fields_migrate_on_load (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_pipeline_aggregates_all_completion_calls_and_missing_usage_is_unknown (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_project_updates_reach_later_runs_without_mutating_active_snapshot (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_recovery_rebuilds_missing_summary_and_interrupts_stale_observations (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_real_time_deltas_and_request_configuration (tests.test_loop.LoopTests) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 8.116s
+
+OK

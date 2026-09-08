@@ -1,0 +1,31 @@
+test_cancellation_propagates_to_async_provider (tests.test_inference.InferenceTests) ... ok
+test_concurrent_calls_keep_inputs_separate (tests.test_inference.InferenceTests) ... ok
+test_default_dispatch_uses_installed_litellm_async_entry_points (tests.test_inference.InferenceTests) ... ok
+test_embedding_passes_open_kwargs_and_preserves_native_response (tests.test_inference.InferenceTests) ... ok
+test_import_does_not_load_engines_services_or_sdk (tests.test_inference.InferenceTests) ... ok
+test_missing_model_and_native_provider_error (tests.test_inference.InferenceTests) ... ok
+test_rerank_accepts_document_objects_and_returns_scores_and_metadata (tests.test_inference.InferenceTests) ... ok
+test_clone_copies_config_but_does_not_duplicate_execution_history (tests.test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-25' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x0000022FDBE9F5E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.282 seconds
+ok
+test_completion_metadata_usage_only_chunks_and_no_payload_leak (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_configuration_validation_runs_before_create_and_save (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_failure_keeps_finish_reason_and_non_llm_engines_have_summary (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_flexible_config_persists_inherits_and_runtime_options_win (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_interrupt_preserves_observed_usage_without_claiming_final_total (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_legacy_configuration_and_custom_fields_migrate_on_load (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_old_project_summaries_are_ignored_and_do_not_resurrect_runs (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_pipeline_aggregates_all_completion_calls_and_missing_usage_is_unknown (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_project_and_task_queries_read_the_same_run_without_result_files (tests.test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-278' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x0000022FE35BCAF0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.109 seconds
+ok
+test_project_updates_reach_later_runs_without_mutating_active_snapshot (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_recovery_finalizes_stale_observations_in_run (tests.test_configuration_results.ConfigurationResultTests) ... ok
+test_running_results_and_injected_repository (tests.test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-394' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x0000022FE35DE370>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+ok
+test_task_filter_soft_delete_and_cross_project_lookup (tests.test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-420' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x0000022FE35E1E50>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.156 seconds
+Executing <Task pending name='Task-420' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x0000022FE35A98E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.187 seconds
+ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 16.774s
+
+OK

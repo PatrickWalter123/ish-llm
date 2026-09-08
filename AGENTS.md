@@ -109,6 +109,13 @@ Engine implementations must not directly write Run, Step, Task, or conversation 
 
 They communicate execution progress through EngineEvent.
 
+### Reusable Inference
+
+Embedding and reranking belong to ish/inference as reusable model calls, not
+Engine strategies. They may be used by Engines, Tools and RAG components and must
+not own Run/Step lifecycle or write domain persistence. Execution observations
+belong to Run; Project/Task queries read Runs without duplicating result files.
+
 ### Step
 
 A Step is an observable execution unit inside a Run.
@@ -144,7 +151,7 @@ Responsible for Project lifecycle orchestration:
 * migration coordination
 * component initialization coordination
 
-ProjectManager must not know the internal directory layout of Memory, Workflow, Tool, Secret, or Task components.
+ProjectManager must not know the internal directory layout of Memory, Workflow, Tool, or Task components.
 
 ### TaskManager
 
@@ -239,7 +246,8 @@ Do not write the following to logs:
 * credentials
 * full environment-variable dumps
 
-Secrets should eventually be handled through a dedicated SecretManager / SecretStore.
+Authentication uses the provider SDK environment or runtime-only Engine arguments.
+Do not add an application credential service unless explicitly requested.
 
 ## Runtime Rules
 
@@ -298,6 +306,16 @@ StepPaths defines only major Step-level locations.
 Do not centralize every nested component path inside ProjectPaths.
 
 Each subsystem owns the structure beneath its own root directory.
+
+## Project Components
+
+Components explicitly declare their Project-root directory and own configuration,
+open JSON definitions and storage lifecycle beneath it. Use the Component base for
+common CRUD/codecs/cloning, and ComponentData through ProjectManager for locked,
+lifecycle-checked access. Base and registry must not depend on Tool execution.
+Domain-specific runtime capability adapters live with their own components.
+Workflow/Subagent records are data, not a new execution hierarchy; graph/subagent
+execution stays within the owning Run and uses Engine events for Steps.
 
 ## Code Style
 

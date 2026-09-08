@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 from ish.components.base import Component
 from ish.components.registry import ComponentRegistry
+from ish.components.tools.resolver import ComponentToolResolver
 from ish.components.tools import Tool, ToolRegistry
 from ish.components.tools.component import ToolComponent, ToolPaths
 from ish.components.workflows.component import WorkflowComponent, WorkflowPaths
@@ -166,6 +167,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_component_addition_does_not_publish_selection(self):
         class Broken(Component):
             name = "broken"
+            directory = "partial"
             def initialize(self, project):
                 (project.paths.root / "partial").mkdir(exist_ok=True)
                 raise ValueError("failed")
@@ -174,7 +176,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
             self.projects.set_components(self.project, ("broken",))
         self.assertEqual(self.projects.load(self.project.id).components, ())
         self.assertEqual(self.project.components, ())
-        self.assertEqual(self.components.resolve_tools(self.projects.load(self.project.id)).names(), ())
+        self.assertEqual(ComponentToolResolver(self.components).resolve_tools(self.projects.load(self.project.id)).names(), ())
 
     async def test_unselected_or_invalid_tool_configuration_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -193,9 +195,9 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.projects.configure_component(self.project, "tools", {"enabled": ["add"]})
         self.projects.set_components(self.project, ())
         self.assertTrue(ToolPaths.for_project(self.project).configuration.exists())
-        self.assertEqual(self.components.resolve_tools(self.projects.load(self.project.id)).names(), ())
+        self.assertEqual(ComponentToolResolver(self.components).resolve_tools(self.projects.load(self.project.id)).names(), ())
         self.projects.set_components(self.project, ("tools",))
-        self.assertEqual(self.components.resolve_tools(self.project).names(), ("add",))
+        self.assertEqual(ComponentToolResolver(self.components).resolve_tools(self.project).names(), ("add",))
 
     async def test_clone_uses_current_project_state_and_delegates_component_configuration(self):
         stale = deepcopy(self.project)
@@ -206,9 +208,9 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         clone = self.projects.clone(stale)
         self.assertEqual(clone.title, "Updated")
         self.assertEqual(clone.components, ("tools", "workflows"))
-        self.assertEqual(self.components.resolve_tools(clone).names(), ("add",))
+        self.assertEqual(ComponentToolResolver(self.components).resolve_tools(clone).names(), ("add",))
         self.projects.configure_component(clone, "tools", {"enabled": []})
-        self.assertEqual(self.components.resolve_tools(self.project).names(), ("add",))
+        self.assertEqual(ComponentToolResolver(self.components).resolve_tools(self.project).names(), ("add",))
 
     async def test_old_metadata_defaults_to_no_components_without_scanning_directories(self):
         path = self.project.paths.root / "project.json"
@@ -218,11 +220,12 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         ToolPaths.for_project(self.project).root.mkdir()
         loaded = self.projects.load(self.project.id)
         self.assertEqual(loaded.components, ())
-        self.assertEqual(self.components.resolve_tools(loaded).names(), ())
+        self.assertEqual(ComponentToolResolver(self.components).resolve_tools(loaded).names(), ())
 
     async def test_component_owns_custom_layout_and_failed_initialization_can_be_restored(self):
         class Custom(Component):
             name = "custom"
+            directory = "custom_data"
             broken = True
             def initialize(self, project):
                 (project.paths.root / "custom_data" / "nested").mkdir(parents=True, exist_ok=True)
@@ -252,7 +255,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_two_projects_share_loop_engine_but_not_enabled_tools(self):
         self.projects.set_components(self.project, ("tools",))
         self.projects.configure_component(self.project, "tools", {"enabled": ["add"]})
-        self.project.config.model = "openai/test-model"
+        self.project.config.completion["model"] = "openai/test-model"
         self.projects.save(self.project)
         other = self.projects.create("Other", config=self.project.config)
         other_task = self.tasks.create(other, "Other")
@@ -321,8 +324,8 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         manager = self.manager()
         stale = deepcopy(self.project)
         await manager.start(stale, self.task)
-        self.project.config.model = "updated"
+        self.project.config.completion["model"] = "updated"
         self.projects.save(self.project)
         await manager.submit(stale, self.task, "test")
         await manager.wait_idle(stale, self.task)
-        self.assertEqual(self.engines.resolve("fake").contexts[0].project.config.model, "updated")
+        self.assertEqual(self.engines.resolve("fake").contexts[0].project.config.completion["model"], "updated")

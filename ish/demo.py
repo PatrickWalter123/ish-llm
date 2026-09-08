@@ -31,10 +31,7 @@ async def run_request(args: argparse.Namespace) -> int:
     tools = ToolRegistry()
     components = ComponentRegistry((ToolComponent(tools),))
     projects = ProjectManager(ProjectRepository(args.workspace / "projects"), tasks, components=components)
-    project = projects.create("LoopEngine demo", config=ProjectConfig(
-        model=args.model, temperature=args.temperature, default_engine="loop",
-        credential_ref=args.credential_ref, api_base=args.api_base,
-    ), components=("tools",) if args.with_tools else ())
+    project = projects.create("LoopEngine demo", config=ProjectConfig(default_engine="loop", completion={'model': args.model, 'temperature': args.temperature, 'api_base': args.api_base}), components=("tools",) if args.with_tools else ())
     task = tasks.create(project, "Streaming request")
     if args.with_tools:
         tools.register(Tool("add", "Add two numbers.", {
@@ -66,7 +63,6 @@ def main() -> int:
     parser.add_argument("--model", required=True, help="LiteLLM provider/model identifier")
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--workspace", type=Path, default=Path("workspace"))
-    parser.add_argument("--credential-ref", help="Credential reference, e.g. env:OPENAI_API_KEY")
     parser.add_argument("--api-base", help="Optional OpenAI-compatible endpoint URL")
     parser.add_argument("--temperature", type=float, default=None, help="Omit for model default")
     parser.add_argument("--max-iterations", type=int, default=8)

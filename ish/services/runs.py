@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Optional, Union
 import asyncio
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import asdict
 
 from ish.core.models import (
     Message, MessageRole, MessageStatus, Project, Run, RunStatus, StepStatus,
@@ -11,13 +12,16 @@ from ish.core.paths import RunPaths
 from ish.engines.base import EngineContext, EngineEvent, EngineEventType, EngineRegistry
 from .conversation import ConversationStore
 from .context import ConversationContextBuilder
-from ish.components.registry import CapabilityResolver, ComponentRegistry
+from ish.components.registry import ComponentRegistry
+from ish.components.tools.resolver import CapabilityResolver, ComponentToolResolver
 from .steps import StepEventRecorder, StepManager
 from .storage import (
     StorageIO, atomic_json, child, drain_on_cancel, read_json, record,
 )
 from .tasks import TaskManager, TaskRuntime
 from .logging import log_event
+from .results import RunResultQuery
+from ish.core.results import CompletionResult
 
 
 class RunRepository:
@@ -27,6 +31,9 @@ class RunRepository:
         return RunPaths(child(task.paths.runs, run_id))
 
     def save(self, run: Run) -> None:
+        if run.status not in (RunStatus.PENDING, RunStatus.RUNNING) and "completions" in run.metadata:
+            run.metadata["completions"] = [asdict(CompletionResult.for_run(data, run))
+                                           for data in run.metadata["completions"]]
         atomic_json(run.paths.root / "run.json", record(run))
         log_event(run.paths.logs, "run.saved", entity_id=run.id, status=run.status)
 
@@ -66,7 +73,7 @@ class RunManager:
                  steps: Optional[StepManager] = None,
                  on_event: Optional[Callable[[Run, EngineEvent], None]] = None,
                  repository: Optional[RunRepository] = None,
-                 capabilities: Optional[CapabilityResolver] = None,
+                 capabilities: Optional[Union[CapabilityResolver, ComponentRegistry]] = None,
                  conversations: Optional[Callable[[Task], ConversationStore]] = None,
                  context_builder: Optional[ConversationContextBuilder] = None) -> None:
         if repository is not None and runs is not None:
@@ -77,8 +84,12 @@ class RunManager:
             runs if runs is not None else RunRepository())
         self.steps = steps if steps is not None else StepManager()
         self.recorder = StepEventRecorder(self.steps)
+        self.results = RunResultQuery(tasks, self.repository)
         self.events = RunEventPublisher(on_event)
-        self.capabilities = capabilities if capabilities is not None else ComponentRegistry()
+        if capabilities is None:
+            capabilities = ComponentRegistry()
+        self.capabilities = (ComponentToolResolver(capabilities)
+                             if isinstance(capabilities, ComponentRegistry) else capabilities)
         self.conversations = conversations if conversations is not None else tasks.conversations
         self.context_builder = context_builder if context_builder is not None else tasks.context_builder
         self._runtimes: dict[tuple[str, str], TaskRuntime] = {}
@@ -322,6 +333,8 @@ class RunManager:
             async for event in events:
                 if event.type == EngineEventType.TEXT_DELTA:
                     await self._io.run(store.delta, run.assistant_message_id, event.text)
+                elif event.type == EngineEventType.COMPLETION:
+                    await self._io.run(self._record_completion, run, event)
                 else:
                     await self._io.run(self.recorder.record, run, event)
                 self.events.publish(run, event)
@@ -332,6 +345,20 @@ class RunManager:
         if any(step.status in (StepStatus.PENDING, StepStatus.RUNNING, StepStatus.FAILED)
                for step in await self._io.run(self.steps.list, run)):
             raise RuntimeError("Engine ended with unfinished or failed Steps")
+
+    def _record_completion(self, run: Run, event: EngineEvent) -> None:
+        if event.completion is None:
+            raise ValueError("Completion event requires a result")
+        result = asdict(event.completion)
+        child(run.paths.state, result["id"])
+        entries = run.metadata.setdefault("completions", [])
+        for index, previous in enumerate(entries):
+            if previous["id"] == result["id"]:
+                entries[index] = result
+                break
+        else:
+            entries.append(result)
+        self.repository.save(run)
 
     def _finish(self, runtime: TaskRuntime, run: Run, status: RunStatus,
                 error: Optional[str] = None) -> None:

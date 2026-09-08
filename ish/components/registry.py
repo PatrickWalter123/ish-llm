@@ -2,16 +2,11 @@
 
 import re
 from copy import deepcopy
-from typing import Protocol
+from typing import Any
 
 from ish.core.models import Project
 from ish.services.logging import log_event
-from .base import ProjectComponent
-from .tools import ToolRegistry
-
-
-class CapabilityResolver(Protocol):
-    def resolve_tools(self, project: Project) -> ToolRegistry: ...
+from .base import ProjectComponent, validate_name
 
 
 class ComponentRegistry:
@@ -23,7 +18,17 @@ class ComponentRegistry:
     def register(self, component: ProjectComponent) -> None:
         if not re.fullmatch(r"[a-z][a-z0-9_]*", component.name) or component.name in self._components:
             raise ValueError("Invalid or duplicate component identity")
+        directory = validate_name(getattr(component, "directory", None)).lower()
+        if directory in {"tasks", "logs", "state", "cache"} or any(
+                item.directory.lower() == directory for item in self._components.values()):
+            raise ValueError("Component directory is reserved or already owned")
         self._components[component.name] = component
+
+    def get(self, name: str) -> ProjectComponent:
+        try:
+            return self._components[name]
+        except KeyError:
+            raise ValueError("Unavailable Project component") from None
 
     def validate(self, names: tuple[str, ...]) -> tuple[str, ...]:
         if not isinstance(names, (tuple, list)) or any(not isinstance(name, str) for name in names):
@@ -45,11 +50,14 @@ class ComponentRegistry:
         self._components[name].configure(deepcopy(project), deepcopy(configuration))
         log_event(project.paths.logs, "component.configured", entity_id=project.id)
 
-    def resolve_tools(self, project: Project) -> ToolRegistry:
-        tools = ToolRegistry()
+    def resolve(self, project: Project, capability: str) -> tuple[Any, ...]:
+        """Collect optional exports without knowing their domain or value types."""
+        values = []
         for name in self.validate(project.components):
-            tools.extend(self._components[name].resolve_tools(deepcopy(project)))
-        return tools
+            exports = self._components[name].exports(deepcopy(project))
+            if capability in exports:
+                values.append(exports[capability])
+        return tuple(values)
 
     def clone(self, source: Project, destination: Project) -> None:
         for name in self.validate(source.components):

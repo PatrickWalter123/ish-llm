@@ -16,8 +16,10 @@ implements the domain and persistence/runtime foundation described below:
 * `ish/core`: Project, Task, Message, Run, and Step dataclasses, persisted enums, and major paths (native slots on Python 3.10+)
 * `ish/compat.py`: Python 3.9 compatibility adapters; no standard-library monkeypatching
 * `ish/engines`: Engine protocol, context snapshots, event types, registry, BaseEngine event lifecycle and LiteLLM chunk handling, LiteLLM LoopEngine, and sequential PipelineEngine/PreparationStep
-* `ish/components`: selected Project components, tool catalog/Project tool configuration, and component-owned workflow directory initialization; RAG/MCP/skills/sub-agents remain planned
-* `ish/providers`: LiteLLM synchronous stream transport and bounded async bridge
+* `ish/components`: generic directory/JSON Component base and registry; Tool, Workflow and Subagent definition CRUD; optional runtime exports with a separate Tool adapter; RAG/MCP/skills remain planned
+* `ish/providers`: LiteLLM synchronous stream transport, bounded async bridge and request container copying
+* `ish/inference`: reusable EmbeddingModel/RerankModel clients without Engine or persistence dependencies
+* `ish/services/components.py`: ComponentData lifecycle-checked, workspace-locked access to selected component data
 * `ish/services/projects.py`: ProjectRepository and ProjectManager with delegated initialization and Task lifecycle coordination
 * `ish/services/tasks.py`: TaskRepository metadata persistence, TaskManager lifecycle/conversation snapshot cloning, and runtime-only TaskRuntime definition
 * `ish/services/conversation.py`: append-only JSONL conversation events
@@ -25,7 +27,7 @@ implements the domain and persistence/runtime foundation described below:
 * `ish/services/access.py`: authoritative Project loading and lifecycle/ownership checks
 * `ish/services/runs.py`: RunRepository persistence, RunEventPublisher notifications, and RunManager ownership of TaskRuntime queues/orchestration/recovery
 * `ish/services/steps.py`: StepRepository metadata persistence, StepManager lifecycle, and StepEventRecorder translation
-* `ish/services/secrets.py`: environment-backed credential resolution via `env:NAME` references
+* `ish/services/results.py`: RunResultQuery, read-only Project/Task views of Run observations
 * `ish/services/logging.py`: domain-scoped rotating operational logging
 * `ish/services/storage.py`: atomic JSON helpers, validated directory removal, StorageIO background execution, and cancellation draining
 * `ish/services/locking.py`: workspace OS ownership, shared attachment guards, and scoped transaction locking
@@ -33,9 +35,9 @@ implements the domain and persistence/runtime foundation described below:
 * `ish/demo.py`: a one-request streaming CLI example with an optional arithmetic tool
 
 There is currently no TUI, dedicated SingleEngine, or GraphEngine. Project
-configuration is intentionally minimal (model, optional temperature/API base,
-default engine, and a credential reference); it has no API-key
-field. Archive import/export, migration, cleanup policies, and subsystem data
+configuration holds default_engine and extensible JSON completion, engines,
+task_defaults and data sections. Task.config holds overrides. CompletionResult
+and ExecutionResult are separate persisted observation models in core/results.py. Archive import/export, migration, cleanup policies, and subsystem data
 cloning are also deferred.
 
 The supported runtime floor is Python 3.9. The same domain fields and JSON/JSONL
@@ -156,8 +158,9 @@ order and copy conversation/configuration with fresh Message and Task IDs,
 clear Run links, and cancel copied queued requests. They do not copy Runs,
 Steps, or artifacts. Project cloning delegates Task snapshots to TaskManager
 and copies Project configuration. Selected components define their own clone
-policy: ToolComponent copies enabled tool names, WorkflowComponent starts with
-an empty directory. Secrets and other subsystem artifacts are not copied by default.
+policy: the common Component base copies configuration and records for Tools,
+Workflows and Subagents. Record IDs remain stable within the new Project so graph
+references still resolve. Other subsystem artifacts are not copied by default.
 
 The test suite is `python -m unittest discover -s tests -v` after installing the
 package dependencies. It needs no live API or credentials and includes an
@@ -182,7 +185,7 @@ modules plus `__init__.py`:
 | `storage.py` | JSON serialization/fsync, validated removal, ordered background I/O |
 | `locking.py` | OS workspace ownership and local synchronization |
 | `logging.py` | Safe operational log routing and rotation |
-| `secrets.py` | SecretResolver and environment-backed SecretManager |
+| `results.py` | RunResultQuery: Project/Task-scoped queries of Run-owned observations |
 
 `conversation_context.py` was renamed to `context.py`; the explicit class name
 ConversationContextBuilder is retained, distinct from engines.base.EngineContext.
@@ -249,12 +252,90 @@ enum values, and queue/recovery semantics remain unchanged. Project metadata
 adds a backward-compatible `components` list; older workspaces default to no
 enabled components, regardless of which directories already exist.
 
+## Flexible Configuration and Project Execution History
+
+ProjectConfig owns default_engine plus completion, engines, task_defaults and data
+JSON dictionaries. Configuration validation rejects runtime objects, non-string
+keys, non-finite numbers and common credential fields at construction/save.
+ProjectRepository migrates old flat model/temperature/api_base fields into
+completion, discards obsolete credential references and preserves unknown keys
+under data. Old Task JSON defaults config to {}. There is no credential resolver.
+
+TaskManager.create copies task_defaults then merges explicit config. Task save and
+clone preserve config with independent containers. EngineContext.settings(name)
+merges Project completion/engines[name]/data with Task overrides. Arrays/scalars
+replace defaults; nested dicts merge. Engine constructor arguments override saved
+values. Loop resolves the "loop" section even within Pipeline; its per-Run shallow
+instance copy preserves subclass methods and shared SDK handles while replacing
+Loop-owned configuration. All execution state stays local. BaseEngine authors
+choose a section name and read settings explicitly. RunManager reloads the Project
+before a Run, so later edits affect future Runs only.
+
+COMPLETION EngineEvents carry CompletionResult snapshots: a stable call ID,
+Step ID, model/response ID, finish reason, status, timestamps, duration, numeric
+usage and usage_complete. BaseEngine.stream_completion yields these observations
+alongside strings; BaseEngine.execute attaches its Step ID and forwards them.
+Text consumers may opt out with include_events=False. Custom Engine-protocol code
+must emit observations itself for detailed LLM accounting. Non-LLM/non-reporting
+engines still receive a terminal Run summary with unknown usage.
+
+The helper requests include_usage by default and retains only numeric usage data,
+including nested token details. Observations update on identity, finish reason or
+usage changes and completion/failure, not every text delta. RunManager persists
+snapshots in Run metadata by call ID before notifying observers. Cancellation and
+generator close never yield final events; the last durable snapshot is retained.
+A provider may omit usage; unknown counts remain None, and interrupted streams do
+not claim a complete aggregate. Observations are not billing guarantees.
+
+Run metadata is the sole persisted source for completion observations. RunRepository
+finalizes pending/running observations when saving terminal Runs, including crash
+recovery. ExecutionResult.from_run builds a detached query view and normalizes old
+terminal Run snapshots in memory without rewriting them on read. No Project-level
+result files or persisted aggregates are created.
+
+RunResultQuery resolves a Project or Task scope under workspace ownership and reads
+RunRepository. ProjectManager, TaskManager and RunManager expose it as results;
+RunManager supplies its configured Run repository. Custom query repositories can
+be injected through the RunReader protocol. Task scope avoids a Project-wide scan.
+List defaults to terminal Runs in active Tasks; include_deleted/include_running
+make wider queries explicit. Direct loads allow soft-deleted history but verify
+owner scope. Permanent Task deletion removes its Runs and results; clones contain
+no Run history. Old Project state/executions JSON is ignored and never a fallback
+for missing/deleted Runs. It is left untouched rather than deleting historical data
+automatically. Existing Run observations already contain the source records.
+
+## Reusable Model Inference
+
+ish/inference is a runtime model-operation domain. EmbeddingModel.embed and
+RerankModel.rerank can be called by Engines, Tools, preparation callbacks or future
+RAG components. They are not execution strategies and have no execute(), registry,
+Run ownership or lifecycle persistence. The primary hierarchy is unchanged.
+
+Each client snapshots open-ended LiteLLM kwargs and invokes aembedding/arerank.
+Call arguments override constructor defaults; request containers are copied while
+live client/callback identities remain intact. Shared defaults do not hold per-call
+state. The shared private ModelClient supplies lazy off-thread SDK import and async
+dispatch. Only providers.parameters is shared with BaseEngine; inference imports
+neither Engines, services nor core domains. Model results and exceptions retain
+SDK types; cancellation propagates, subject to provider cleanup behavior.
+
+Model defaults can live in ProjectConfig.data.inference and Task data overrides,
+read through context.settings(name). Callers own mapping configuration into clients,
+inputs, output/index persistence and observability. Within a Run, self.step or
+PreparationStep can record embedding/rerank lifecycle; Tool handlers may call the
+same clients. No automatic model-call usage recording is introduced outside the
+existing COMPLETION event contract. Inference responses include native metadata;
+callers decide which numeric observations to emit. Rerank billing units must not be
+silently summed as completion tokens. No vector database, RAG CRUD, model download,
+embedding Engine or rerank Engine is added.
+
 ## Beginner Engine Authoring
 
 engines/base.py defines BaseEngine alongside the existing Engine protocol,
 context, events and registry. It is re-exported from ish.engines. Override
 run(context) or supply action=: return an async text iterator, yield strings from
-an async generator, or perform an async operation returning None. The inherited
+an async generator, forward COMPLETION observations, or perform an async operation
+returning None. The inherited
 execute() wraps the operation in one Step and maps text to TEXT_DELTA. Engines
 with several Steps override execute() and use self.step(context, action, name=...)
 for each operation. Consumers forwarding these streams use compat.aclosing.
@@ -272,16 +353,17 @@ The method enforces stream=True and one choice, reads dict/SDK chunks, yields te
 assembles indexed tool-call fragments in ordinary dictionaries, and validates
 termination, duplicate IDs and size limits. An optional fresh response dictionary
 receives a completion-format assistant message only after success; it remains
-unchanged on failure/cancellation. The method itself emits no Step events and has
-no application deadline. Use run()/step() for lifecycle and deadline handling.
-It handles text/tool completion streams; usage/reasoning/multimodal outputs are
-not surfaced. It executes no tools and performs no domain persistence.
+unchanged on failure/cancellation. The method emits COMPLETION observations alongside strings, but no Step
+lifecycle events and no application deadline. Use run()/step() for lifecycle and deadline handling.
+It handles text/tool completion streams and numeric usage observations;
+reasoning/multimodal content is not surfaced. It executes no tools and performs no domain persistence.
 
 copy_params() retains live SDK clients/callbacks while copying builtin containers.
 Per-call transcripts are isolated even when a cancelled provider thread is still
 finishing its network read. Base imports the lightweight transport only; LiteLLM
 is lazily imported in the worker. Non-LLM actions do not invoke/import the SDK.
-No cross-library provider abstraction, embedding or rerank operation is added.
+BaseEngine remains completion-specific. Reusable embedding/rerank operations
+live in inference and do not inherit it.
 
 LoopEngine is the only class in engines/loop.py and inherits BaseEngine. Its
 responsibility is Project/history/prompt configuration, batch validation before
@@ -314,7 +396,7 @@ options such as max_tokens belong in the open-ended completion_kwargs mapping. A
 Project config supplies defaults; explicit kwargs override them. Builtin option
 containers are copied once per Loop execution and again per provider request,
 while SDK clients/callbacks retain identity. These objects are runtime configuration,
-not persisted JSON. Explicit api_key overrides the Project credential reference.
+not persisted JSON. Runtime api_key or SDK environment authentication is used.
 No parameter allowlist attempts to mirror every LiteLLM release. Loop transcript
 and tool-registry ownership remain reserved (messages/tools/functions/function_call),
 and stream=True/n=1 are required. All other options are passed to LiteLLM; newer
@@ -355,7 +437,7 @@ Python cannot forcibly interrupt an in-progress synchronous network read, so
 the worker closes the stream after the read returns or its provider timeout
 expires. These cleanup threads never execute tools or touch persistence.
 
-The Engine uses Project configuration and SecretResolver, emits an LLM Step,
+The Engine resolves Project/Task configuration, emits an LLM Step,
 and forwards each `delta.content` as TEXT_DELTA. Indexed `delta.tool_calls`
 fragments are accumulated into complete call IDs, function names, and JSON
 arguments. Only registered tools are callable. The entire batch is validated
@@ -388,37 +470,54 @@ provider response objects are not copied into Step metadata. Future support
 for a durable structured tool transcript must go through ConversationStore;
 stale Runs remain interrupted and are never automatically resumed.
 
-SecretManager currently resolves environment references only. It does not
-implement a secret vault or write secrets beneath ProjectPaths.secrets. If no
-credential reference is set, LiteLLM can use its provider's normal environment
-authentication or a keyless local endpoint. No global SDK key/logging settings
-are mutated by the Engine.
+Authentication is delegated to the SDK environment or runtime completion_kwargs.
+No application credential service or reserved secrets directory remains. Common
+credential fields and runtime objects are rejected in persisted configuration.
 
-Reusable Tool, ToolRegistry, ToolComponent, and ToolPaths are exported from
-`ish.components.tools`. ComponentRegistry validates selected identities and
-delegates initialization/configuration/cloning to each component. ProjectManager
-accepts the registry, and `create(..., components=("tools", "workflows"))` stores
-the selection in Project metadata. It does not know component directory layouts.
-`ProjectPaths.tools` and `.workflows` are removed; ToolPaths and WorkflowPaths
-own these roots. The default selection is empty, and core Task initialization
-is mandatory independently of optional components.
+Project components inherit `Component` from `ish/components/base.py`, declaring a
+name and a direct-child directory. The base owns safe directory creation/removal,
+open JSON codecs, configuration, definition CRUD and cloning. ComponentRegistry
+validates identity and directory ownership; its optional exports/resolve mechanism
+is generic and has no Tool dependency. Component paths are not in ProjectPaths.
+Core Task initialization remains mandatory, independent of optional selection.
 
-ToolComponent persists enabled names in `tools/component.json`. Its application
-catalog contains trusted handlers, which are not persisted. RunManager receives
-the registry as CapabilityResolver and resolves a fresh Project-scoped tool
-snapshot into EngineContext for each Run. LoopEngine consumes this snapshot;
-it no longer owns a global tool registry. Configuration changes affect later
-Runs. Missing registered components fail closed before provider execution.
-Project selection is not inferred from existing directories, and saved component
-names never trigger arbitrary dynamic imports.
+Default layout is `<project>/<directory>/component.json` plus `records/<id>.json`.
+All mutable JSON uses atomic replacement. Unknown keys survive round trips;
+credentials, runtime objects, non-string keys and non-finite numbers are rejected.
+Component-specific validation/codecs can evolve without a central fixed dataclass.
+ToolComponent stores enabled names and optional native function-tool definitions;
+SubagentComponent stores open specialized model/settings/prompt definitions;
+WorkflowComponent stores open graph data. Graph semantics, node/reference validation
+and subagent execution belong to developer execution code, not this storage base.
 
-Component initializers must be idempotent. Disabling a component retains data;
-re-enabling initializes only missing state. A failed create/clone is soft-deleted,
-and restore retries initialization. Failed selection changes retain the previous
-manifest but can leave partial directories; initialization is not transactional
-across components or process crashes. Future component packages own their CRUD
-and connection lifecycles. WorkflowComponent only initializes its directory;
-SingleEngine/GraphEngine and workflow/RAG/MCP/Skill/sub-agent CRUD remain planned.
+ProjectManager.create/set_components coordinate idempotent initialization.
+ComponentData returned by projects.component reloads Project state and selected
+components under workspace ownership for each CRUD/configuration call. Updates
+hold the lock through read/modify/write. Direct lower-level component access needs
+an explicit ownership scope; async UIs use StorageIO for synchronous APIs.
+
+Disabling retains data. ProjectManager.remove_component(permanent=True) requires
+inactive/detached Tasks, publishes disabled selection, then delegates recursive
+removal to the component. Failed removal stays disabled and may be retried. Linked
+ancestors/entries and escaping paths are rejected. Core-owned tasks/logs/state/cache
+and duplicate component directories cannot be claimed. Developer components are
+trusted code, not a sandbox. Removal and initialization are not cross-file atomic.
+Failed create/clone is soft-deleted; failed additions leave old selection intact
+but may leave partial directories. Cloning copies JSON config/records, not artifacts.
+
+ToolComponent.exports returns a ToolRegistry under the tools key. The separate
+ComponentToolResolver adapts those exports; RunManager wraps ComponentRegistry
+passed as capabilities for existing callers. Custom resolve_tools adapters remain
+supported. Each Run gets a fresh fixed tool snapshot, using persisted overrides or
+legacy catalog definitions with application-registered handlers. Unknown handlers
+fail closed, saved names never import code, and deleting an enabled override is
+rejected. Provider extension keys survive into the completion tools argument.
+
+Existing tools/component.json works without migration. Legacy directory-only
+workflows read/clone with empty configuration without source writes; arbitrary old
+files remain untouched. Re-enabling creates missing common storage. SingleEngine,
+GraphEngine, RAG/MCP/Skill adapters and structured tool transcripts remain planned.
+See `ish/components/README.md` for authoring and CRUD examples.
 New ProjectConfig instances default to `loop`; old persisted `fake` selections
 are preserved and require an explicit configuration change.
 
@@ -470,7 +569,6 @@ ProjectPaths exposes major Project paths such as:
 * root
 * memory
 * tasks
-* secrets
 * state
 * logs
 * cache
@@ -498,7 +596,7 @@ Its responsibilities include:
 
 Subsystem initialization is delegated through initializer objects.
 
-ProjectManager does not know how Memory, Workflow, Secrets, Tools, or Tasks internally structure their directories.
+ProjectManager does not know how Memory, Workflow, Tools, or Tasks internally structure their directories.
 
 ## Task
 
@@ -778,7 +876,6 @@ projects/
 ├── memory/
 ├── tools/
 ├── workflows/
-├── secrets/
 ├── state/
 ├── logs/
 └── tasks/
@@ -826,8 +923,8 @@ The current implementation uses standard-library `logging.Logger` and
 `logs/service.log` (1 MiB with three backups). Project/Task/Run/Step repositories
 log persistence operations; managers log lifecycle and runtime operations.
 Conversation mutations log event type and identity under Task, never text.
-SecretManager can log resolution success/failure under Project, excluding both
-reference and value. LoopEngine supplies that Project scope to its default resolver.
+Completion observations use RunRepository and its existing Run logs.
+Result queries create no separate persistence or result-log hierarchy.
 
 Log fields are allowlisted: UTC time, event, IDs, status, count, permanent flag.
 No raw exceptions, arbitrary metadata, prompts, answers, or provider objects are
@@ -874,7 +971,6 @@ Major remaining components include:
 * Project-scoped tool discovery and configuration beyond the runtime ToolRegistry
 * filesystem tools
 * shell tools
-* SecretManager backends beyond environment references
 * MemoryManager
 * WorkflowManager
 * centralized log export and durable audit requirements if needed

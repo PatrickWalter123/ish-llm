@@ -64,6 +64,17 @@ def remove_owned_tree(owner: Path, target: Path, identifier: str) -> None:
     against another process swapping paths between validation and removal.
     """
     expected = child(owner, identifier).absolute()
+    _remove_tree(owner, target, expected)
+
+
+def remove_named_tree(owner: Path, target: Path, directory: str) -> None:
+    """Remove a component's named direct child using domain deletion checks."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", directory):
+        raise ValueError("Invalid component directory")
+    _remove_tree(owner, target, (owner / directory).absolute())
+
+
+def _remove_tree(owner: Path, target: Path, expected: Path) -> None:
     if target.absolute() != expected:
         raise ValueError("Deletion target does not match the owned object")
     # Reject redirected ancestors too, including Windows junctions.

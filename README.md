@@ -59,8 +59,8 @@ streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
 
-Latest verification: all 157 tests passed on both Python 3.9.13 (79.259 seconds,
-LiteLLM 1.80.17) and Python 3.13.7 (92.817 seconds, LiteLLM 1.100.0). Both SDK
+Latest verification: all 191 tests passed on both Python 3.9.13 (128.472 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (116.750 seconds, LiteLLM 1.100.0). Both SDK
 versions passed the actual SDK/mock SSE test. These results cover the installed
 interpreters; Python 3.9.25 was not separately executed. The test outputs are
 `test-results-python39.txt` and `test-results-python313.txt`.
@@ -72,7 +72,7 @@ below assumes `OPENAI_API_KEY` is already set. Replace the model identifier with
 one available to your provider account.
 
 ```sh
-python -m ish.demo --model openai/gpt-4o-mini --credential-ref env:OPENAI_API_KEY --prompt "Use add to calculate 12 + 30, then explain the result." --with-tools
+python -m ish.demo --model openai/gpt-4o-mini --prompt "Use add to calculate 12 + 30, then explain the result." --with-tools
 ```
 
 Each invocation creates a Project and Task under `workspace/projects/`, prints
@@ -96,11 +96,10 @@ engines.register("loop", LoopEngine(
 # or await manager.submit(project, task, content, engine="loop").
 ```
 
-ProjectConfig supplies `model`, optional `temperature`, optional `api_base`, and
-`credential_ref`. SecretManager resolves `env:NAME` at execution time; secret
-values are not stored in Project JSON. With no reference, provider SDK
-environment/default authentication remains available, including keyless local
-endpoints. Do not put credentials in endpoint URLs.
+ProjectConfig.completion stores JSON-compatible LiteLLM defaults, including
+model, temperature, api_base and provider-specific options. Authentication uses
+the provider SDK environment or runtime-only completion_kwargs. There is no
+application credential resolver. Do not put API keys in persisted settings or URLs.
 
 LoopEngine calls `litellm.completion` with `stream=True`; timeout and
 `num_retries=0` are defaults that completion_kwargs can override. It forwards content deltas immediately, assembles indexed
@@ -125,8 +124,8 @@ without a new dataclass field; unsupported values are reported by LiteLLM.
 Runtime SDK clients and callbacks are supported and retained by reference. Plain
 dict/list/tuple containers are copied at configuration/snapshot/request boundaries.
 These runtime parameters are not serialized to Project/Run metadata or service
-logs. Continue using credential_ref/SecretManager for saved credentials; an
-explicit runtime api_key takes precedence over the Project reference.
+logs. Supply credentials through the SDK environment or runtime-only api_key;
+persisted settings reject common credential fields.
 
 Application limits are direct keyword arguments: `max_iterations=8`,
 `request_timeout=60.0`, `tool_timeout=30.0`, `buffer_size=8`, `max_tool_calls=16`,
@@ -140,6 +139,166 @@ one choice: stream=False/n other than 1 are rejected. messages and tools are bui
 from the Task transcript and Project registry; overriding messages/tools or legacy
 functions/function_call is rejected. tool_choice and parallel_tool_calls are
 forwarded, but actual tool execution remains serial.
+
+## Project settings, Task overrides and Run results
+
+```python
+config = ProjectConfig(
+    default_engine="loop",
+    completion={"model": "openai/my-model", "top_p": 0.9, "max_tokens": 4096},
+    engines={"loop": {"max_iterations": 8, "request_timeout": 60,
+                      "system_prompt": "Answer clearly."}},
+    task_defaults={"data": {"language": "ko"}},
+    data={"documents": ["manual.md"], "application": {"theme": "dark"}},
+)
+project = projects.create("Workspace", config=config)
+task = tasks.create(project, "Research", config={
+    "completion": {"max_tokens": 2048},
+    "engines": {"loop": {"system_prompt": "Explain with examples."}},
+    "data": {"topic": "Python"},
+})
+```
+
+Project settings live in project.json; Task overrides live in task.json.config.
+The four dictionaries accept nested JSON data without new dataclass fields.
+Call projects.save(project) or tasks.save(task) after editing. Task saves require
+a detached runtime as before. task_defaults is copied when a new Task is created;
+changing it later does not rewrite existing Tasks. Clones copy configuration,
+with independent containers, and start without execution history.
+
+Every Engine receives the full Project/Task snapshots and can call
+`context.settings("engine-name")` to get isolated completion/engine/data sections.
+Nested Project and Task dictionaries merge recursively; lists/scalars replace.
+Loop reads the "loop" section even inside a pipeline or under a registry alias.
+Its explicit constructor limits, completion_kwargs and system_prompt override
+saved settings. Omitted constructor limits inherit saved values then builtin
+defaults. Runtime completion_kwargs replaces supplied argument values at the top
+level, retaining client/callback identities. Project changes are reloaded before
+the next Run; they do not alter an active Run's context.
+
+Old project.json model/temperature/api_base fields migrate into completion on
+load. Unknown old fields move into data. The former credential reference is
+ignored and removed on next save; use the provider's standard environment names.
+Old Task files without config load with an empty override. Python callers use the
+new ProjectConfig constructor; old flat keyword arguments were removed.
+
+```python
+await manager.submit(project, task, "Explain the design")
+await manager.wait_idle(project, task)
+
+result = projects.results.list(project)[-1]  # ExecutionResult
+print(result.run_id, result.engine, result.status)
+print(result.total_tokens, result.finish_reasons)
+for completion in result.completions:         # CompletionResult
+    print(completion.step_id, completion.model, completion.finish_reason,
+          completion.usage, completion.duration_seconds)
+```
+
+Run is the owner of execution observations. Each completion snapshot is persisted
+by stable call ID in run.json.metadata.completions. Finishing or recovering a Run
+also finalizes interrupted observations in that same file. No second result file
+is written under Project or Task.
+
+RunResultQuery exposes load/list through projects.results, tasks.results and
+manager.results. ExecutionResult is an in-memory view, computed from the Run:
+
+```python
+result = tasks.results.load(task, run_id)       # direct lookup within a Task
+project_runs = projects.results.list(project) # terminal Runs from active Tasks
+all_runs = projects.results.list(project, include_deleted=True, include_running=True)
+```
+
+load accepts either a Project or Task; a Project lookup searches its Tasks.
+Lists exclude soft-deleted Tasks and pending/running Runs by default; direct load
+can inspect a soft-deleted Task's history. Reads hold workspace ownership but
+never write result metadata. RunManager's query uses its injected RunRepository;
+for custom storage, RunResultQuery(tasks, custom_run_repository) is also available.
+Async UI callers can offload these synchronous queries through StorageIO.
+
+Soft deletion retains Run history; permanent Task deletion removes its Runs and
+therefore its query results. Project/Task clones start without Runs. Old Project
+state/executions/*.json files are ignored and left untouched, including orphaned
+summaries from deleted Tasks; they are not a fallback source. Existing Run metadata
+needs no data move. There is no cached aggregate to synchronize or rebuild.
+Project-wide queries scan Task/Run metadata; a disposable index can be added later
+if measurements justify it without becoming the source of truth.
+
+CompletionResult contains call/Step IDs, model, response ID, finish reason, status,
+timestamps, elapsed seconds, numeric usage and usage_complete. ExecutionResult
+contains Run/Task/Project IDs, Engine name, Run timing/status, completion results
+and summed prompt_tokens/completion_tokens/total_tokens. Summaries aggregate all
+LLM calls in Loops and pipelines. No cost estimate is inferred.
+
+The shared completion helper requests stream_options.include_usage=True by
+default (explicit False is honored). It captures SDK or dict usage-only chunks,
+including numeric cached/reasoning token details. Totals are None if any call
+lacks a count or has an uncompleted stream; partial observed usage remains on the
+individual result. Unknown usage is not zero. Provider-reported counters are not
+an independently verified billing ledger. No raw responses, headers, prompts,
+API keys or tool arguments/results enter the execution summaries.
+
+stream_completion now yields strings plus COMPLETION EngineEvents by default.
+BaseEngine.execute() and Loop forward/persist them automatically. Use
+include_events=False only for standalone text consumers that do not need usage
+persistence. Custom Engine-protocol implementations can emit COMPLETION events
+with CompletionResult themselves; non-reporting engines still get Run summaries
+with unknown LLM usage. Cancellation never yields from a closing generator;
+RunManager finalizes the last durable observation.
+
+## Reusable embedding and rerank inference
+
+Engine decides the execution sequence of a Run. Embedding and reranking are model
+operations that Engines, Tools and RAG can share, so they live in ish/inference
+rather than the Engine registry or a new child in Project -> Task -> Run -> Step.
+The current reusable clients call LiteLLM's
+[aembedding](https://docs.litellm.ai/docs/embedding/supported_embedding) and
+[arerank](https://docs.litellm.ai/docs/rerank) APIs:
+
+```python
+from ish.inference import EmbeddingModel, RerankModel
+
+embedding = EmbeddingModel(model="openai/text-embedding-3-small", dimensions=256)
+reranker = RerankModel(model="cohere/rerank-english-v3.0", top_n=3)
+
+vectors = await embedding.embed(["first document", "second document"])
+ranked = await reranker.rerank("the query", ["first document", "second document"], top_n=1)
+# Native SDK responses: vectors.data / vectors.usage, ranked.results / ranked.meta.
+```
+
+Constructor kwargs are runtime defaults; call kwargs override them. Provider-specific
+options pass through without a dataclass allowlist. Builtin request containers are
+copied per instance/call while SDK clients/callbacks retain identity. Model clients
+can be shared across concurrent Tasks. Defaults are timeout=60 and num_retries=0;
+callers may override SDK options. Native responses, exceptions and cancellation
+propagate to the caller. The injected embedding_fn/rerank_fn must be asynchronous.
+SDK import is lazy and offloaded. Importing ish.inference loads no Engines,
+services, core models or LiteLLM SDK.
+
+Save optional model defaults in ProjectConfig.data, for example:
+
+```python
+config.data["inference"] = {
+    "embedding": {"model": "openai/text-embedding-3-small"},
+    "rerank": {"model": "cohere/rerank-english-v3.0", "top_n": 3},
+}
+# Task.config["data"]["inference"] may override these JSON defaults.
+
+async def prepare(context):
+    settings = context.settings("retrieval")["data"]["inference"]
+    result = await EmbeddingModel(**settings["embedding"]).embed(["document text"])
+    context.state["embeddings"] = result.data
+
+# Wrap prepare with PreparationStep(..., kind="embedding") or self.step(...).
+# A Tool handler can await the same model methods without creating another Run.
+```
+
+Inference clients create no Steps/Runs, register no tools and write no files.
+Callers own preparation, input selection, vector/index storage and lifecycle events.
+Vectors/document results should stay in runtime state or component-owned storage,
+not ordinary execution logs. Native model usage is returned, but inference calls
+do not automatically emit COMPLETION events or enter the completion token aggregate;
+a calling Engine must explicitly report observations if needed. Rerank billing
+units are not assumed to be tokens. RAG collection/index CRUD remains planned.
 
 ## Write your own Engine
 
@@ -169,7 +328,8 @@ A complete offline example with service setup is `examples/custom_engine.py`:
 
 It prints `Echo: hello`, uses a temporary workspace, and makes no model requests.
 You can also pass `BaseEngine("Name", action=async_function_or_generator)` without
-writing a subclass. A generator must yield strings; a coroutine must return None.
+writing a subclass. A generator yields strings and may forward COMPLETION events;
+a coroutine must return None.
 Store private/intermediate results in `context.state`, not in yielded dictionaries
 or Step metadata. Use `timeout_seconds=` for an optional whole-Step deadline.
 
@@ -201,7 +361,7 @@ from ish.engines import BaseEngine
 class AnswerEngine(BaseEngine):
     def run(self, context):
         return self.stream_completion({
-            "model": context.project.config.model,
+            "model": context.project.config.completion["model"],
             "messages": [{"role": "user", "content": context.messages[-1].content}],
             "max_tokens": 1024,
             "timeout": 30,
@@ -213,20 +373,23 @@ engines.register("answer", AnswerEngine("Answer", kind="llm", timeout_seconds=35
 `run()` here is an ordinary function returning an async iterator; BaseEngine
 consumes and closes it. This example sends the current input and uses the SDK's
 environment authentication. Custom engines choose their own history, system prompt,
-Project options and credential resolution; LoopEngine supplies those policies.
+Project options; LoopEngine resolves Project/Task defaults automatically.
 For preparation or text transformation use `async def run()` with
-`async with aclosing(self.stream_completion(request)) as deltas` and yield strings.
+`async with aclosing(self.stream_completion(request)) as items` and forward each
+item. Text arrives as str; completion observations arrive as EngineEvent. The
+inherited execute() handles both. If transforming text, first check isinstance(item, str).
 
 Pass a fresh `response={}` to receive the assembled assistant message after normal
 stream completion. It contains `role`, `content`, and optional `tool_calls` in
 completion message format. Fragmented tool calls are ordered by index and
 validated before success; the helper does not execute them. The output dictionary
-is unchanged on failure/cancellation and must remain local to that request. Usage,
-reasoning and multimodal deltas are not exposed by this text/tool helper. It
+is unchanged on failure/cancellation and must remain local to that request.
+Completion observations separately report finish reason, model, response ID,
+usage and timing. Reasoning/multimodal content is not surfaced by this helper. It
 requires one choice and normal `stop` or `tool_calls` termination.
 
 Each call copies builtin request containers while retaining live SDK handles.
-Assembly never lives on the Engine instance. The helper itself has no Step
+Assembly never lives on the Engine instance. The helper emits COMPLETION observations but has no Step
 lifecycle/deadline: use it inside `run()` or `self.step(...)` for those guarantees.
 BaseEngine provides a LiteLLM convenience, not a cross-provider abstraction;
 non-LLM engines can use only its Step event support without invoking LiteLLM.
@@ -334,8 +497,7 @@ async def main() -> None:
     tasks = TaskManager()
     projects = ProjectManager(ProjectRepository(Path("./workspace/projects")), tasks)
     project = projects.create("Example", config=ProjectConfig(
-        model="openai/gpt-4o-mini", temperature=None,
-        credential_ref="env:OPENAI_API_KEY"))
+        completion={"model": "openai/gpt-4o-mini"}))
     task = tasks.create(project, "Conversation")
     engines = EngineRegistry()
     engines.register("loop", LoopEngine())
@@ -465,7 +627,7 @@ tasks = TaskManager()
 projects = ProjectManager(ProjectRepository(Path("workspace/projects")), tasks,
                           components=components)
 project = projects.create("Example", components=("tools", "workflows"),
-                          config=ProjectConfig(model="openai/gpt-4o-mini", temperature=None))
+                          config=ProjectConfig(completion={"model": "openai/gpt-4o-mini"}))
 projects.configure_component(project, "tools", {"enabled": ["add"]})
 task = tasks.create(project, "Conversation")
 engines = EngineRegistry()
@@ -478,7 +640,7 @@ Pass the same configured component registry to ProjectManager and RunManager.
 Registered components are available to select; they are not automatically enabled.
 `create(..., components=())` creates no tool/workflow directories. Selecting tools
 creates `<project>/tools/component.json` with an empty `enabled` list; selecting
-workflows creates `<project>/workflows/`. Tool handlers remain in the application
+workflows creates `<project>/workflows/component.json` and `records/`. Tool handlers remain in the application
 catalog and are never serialized into Project JSON.
 
 `projects.set_components(project, ("tools",))` changes selection after creation.
@@ -501,10 +663,78 @@ The legacy constructor `initializers=` still runs mandatory application
 initializers for each Project. Use the component registry for optional features
 that users can select; core Task initialization is always performed.
 
-Project cloning delegates component configuration cloning: ToolComponent copies
-enabled names; WorkflowComponent currently creates an empty workspace. Workflow
-definition CRUD and GraphEngine are still planned. The remaining reserved
-RAG/MCP/Skill/sub-agent packages can implement the same ProjectComponent contract.
+Project cloning copies component configuration and named JSON definitions, including
+Tool overrides, workflow graphs and subagent settings. Record IDs remain stable
+inside the new Project for graph references; arbitrary artifacts/indexes and live
+handlers are not copied. Graph execution and RAG/MCP/Skill adapters remain planned.
+
+### Component data and custom components
+
+The base and registry are independent of Tools. Subclass `Component`, explicitly
+declare `name` and `directory`, and register the instance. Configuration and records
+are open JSON dicts; you can add keys without changing a dataclass.
+
+```python
+from ish.components import Component
+from ish.components.subagents import SubagentComponent
+
+class NotesComponent(Component):
+    name = "notes"
+    directory = "knowledge"
+
+components.register(NotesComponent())
+components.register(SubagentComponent())
+projects.set_components(project, ("tools", "workflows", "notes", "subagents"))
+
+agents = projects.component(project, "subagents")
+agents.create({
+    "completion": {"model": "openai/gpt-4o-mini", "temperature": 0.2},
+    "system_prompt": "Review code carefully.",
+    "custom_option": True,
+}, identifier="reviewer")
+
+graphs = projects.component(project, "workflows")
+graphs.create({
+    "nodes": [{"id": "review", "subagent": "reviewer"}],
+    "edges": [],
+}, identifier="code_review")
+graphs.update("code_review", {"description": "Review workflow"})
+graph = graphs.load("code_review")
+encoded = Component.serialize(graph)
+restored = Component.deserialize(encoded)
+all_graphs = graphs.list()  # {"code_review": {...}}
+
+# Replace a record with save(id, data); update applies a shallow key patch.
+# Delete one record with graphs.delete("code_review").
+projects.remove_component(project, "notes")  # Disable and keep knowledge/.
+projects.remove_component(project, "notes", permanent=True)  # Delete knowledge/.
+```
+
+Every selected component owns `<project>/<directory>/component.json` and
+`records/<id>.json`. Creation and `set_components` create missing directories.
+Base initialization is idempotent. Permanent removal requires detached Tasks and
+publishes disabled selection first; an I/O failure can leave partial data for retry.
+
+`projects.component` returns a locked handle that rechecks Project state/selection
+on every call. In async UI code, use `StorageIO(projects.ownership).run` for its
+synchronous CRUD. Direct component methods require a workspace ownership scope.
+JSON must have string keys and JSON-compatible values; keep credentials and live
+SDK objects in runtime arguments. Subagent/graph definitions are data only; they
+are not automatically executed or interpreted as a fixed graph schema.
+
+ToolComponent additionally stores native function-tool definitions in
+`tools/records/<tool-name>.json`. Create one with the usual LiteLLM `type/function`
+dict; its name must match a registered handler. Extra provider keys such as
+`function.strict` survive persistence and appear in the LoopEngine tools argument.
+The enabled list still controls availability. Disable a tool before deleting its
+override. Existing enabled-name-only configuration keeps working.
+
+RunManager still accepts `capabilities=components`. Tool-specific resolution now
+lives in `ish.components.tools.resolver.ComponentToolResolver`; for direct access,
+use `ComponentToolResolver(components).resolve_tools(project)`. Generic components
+can optionally export other capabilities through `exports(project)` and
+`components.resolve(project, capability_name)`.
+See [component API and persistence details](ish/components/README.md).
 
 TaskManager is bound to authoritative ProjectAccess when constructed with
 ProjectManager. A standalone TaskManager must instead receive `project_access=`.
@@ -539,8 +769,8 @@ exclusive filesystem ownership; it is not protection against concurrent writers.
 `ish/engines` contains execution strategies and the Engine contract. LoopEngine
 is implemented; SingleEngine and GraphEngine remain planned. Reusable Tool and
 ToolRegistry and Project tool selection live in `ish/components/tools`.
-`workflows` has its own directory initializer; `rag`, `mcp`, `skills`, and
-`subagents` remain reserved for future component CRUD and runtime adapters. Provider
+`workflows` and `subagents` use shared definition CRUD; `rag`, `mcp`, and `skills`
+remain reserved for future component adapters. Provider
 stream transport lives in `ish/providers/litellm.py`. TaskRuntime lives in
 `ish/services/tasks.py` and is owned and scheduled by RunManager.
 
@@ -548,9 +778,8 @@ Services write structured operational JSON lines through Python `logging` and
 `RotatingFileHandler`. Each Project, Task, Run, and Step owns
 `logs/service.log`, with up to three 1 MiB backups. Conversation operations and
 runtime scheduling log to Task; Run/Step lifecycle operations log to their
-respective domains. Environment credential resolution uses Project logs when
-LoopEngine constructs SecretManager, or `SecretManager(log_dir=project.paths.logs)`.
-Unscoped/custom secret resolvers are responsible for their own diagnostics.
+respective domains. Model observations use the existing Run persistence path and
+Run logs. SDK authentication and diagnostics are managed by the provider library.
 
 Only event names, IDs, statuses, counts, and deletion flags are recorded;
 prompts, answers, titles, arbitrary metadata, references, and secret values are

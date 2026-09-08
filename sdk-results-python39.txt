@@ -1,0 +1,16 @@
+test_real_litellm_sdk_with_mock_http_sse_and_tool_loop (tests.test_loop.LoopTests) ... Executing <Task pending name='Task-1' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x0000027FFE0CA460>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content=None, rol...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content='The resu...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+ok
+test_public_model_type_hints_resolve_on_python39 (tests.test_compat.CompatibilityTests) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 6.614s
+
+OK

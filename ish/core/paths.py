@@ -15,10 +15,6 @@ class ProjectPaths:
         return self.root / "tasks"
 
     @property
-    def secrets(self) -> Path:
-        return self.root / "secrets"
-
-    @property
     def state(self) -> Path:
         return self.root / "state"
 

@@ -1,5 +1,6 @@
-"""Reusable capabilities and future CRUD services used by execution engines.
+"""Project-owned component data and optional runtime capabilities."""
 
-Each component owns its models, repository/manager, configuration, and runtime
-adapters. ProjectManager delegates initialization; engines consume capabilities.
-"""
+from .base import Component, ProjectComponent
+from .registry import ComponentRegistry
+
+__all__ = ["Component", "ProjectComponent", "ComponentRegistry"]

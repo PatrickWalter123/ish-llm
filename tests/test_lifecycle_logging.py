@@ -18,7 +18,6 @@ from ish.services.storage import remove_owned_tree
 from ish.services.logging import _RaisingFileHandler, log_event
 from ish.services.projects import ProjectManager, ProjectRepository
 from ish.services.runs import RunManager
-from ish.services.secrets import SecretManager
 from ish.services.tasks import TaskManager, TaskRuntime
 from tests.support.fake_engine import FakeStreamingEngine
 
@@ -143,18 +142,6 @@ class LifecycleTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.tasks.delete(self.task, permanent=True)
         self.assertTrue(self.task.paths.conversation.exists())
-
-    def test_secret_logs_do_not_contain_reference_or_value(self) -> None:
-        secrets = SecretManager(log_dir=self.project.paths.logs)
-        with patch.dict(os.environ, {"ISH_PRIVATE_TEST_KEY": "private-key-value"}):
-            self.assertEqual(secrets.resolve("env:ISH_PRIVATE_TEST_KEY"), "private-key-value")
-        with self.assertRaises(ValueError):
-            secrets.resolve("unsupported-private-reference")
-        content = (self.project.paths.logs / "service.log").read_text(encoding="utf-8")
-        for sensitive in ("ISH_PRIVATE_TEST_KEY", "private-key-value", "unsupported-private-reference"):
-            self.assertNotIn(sensitive, content)
-        self.assertIn("secret.resolved", content)
-        self.assertIn("secret.failed", content)
 
     def test_logging_failure_does_not_fail_metadata_save(self) -> None:
         self.task.title = "Changed"

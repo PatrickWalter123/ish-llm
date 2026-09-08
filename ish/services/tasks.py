@@ -5,7 +5,7 @@ from ish.compat import dataclass
 from copy import deepcopy
 from collections.abc import Callable
 
-from ish.core.models import Project, Task, TaskStatus, new_id
+from ish.core.models import Project, ProjectConfig, Task, TaskStatus, new_id
 from ish.core.paths import ProjectPaths, TaskPaths
 from .conversation import ConversationStore, conversation_store
 from .context import ConversationContextBuilder
@@ -41,6 +41,7 @@ class TaskRepository:
         log_event(project.paths.logs, "tasks.initialized", entity_id=project.id)
 
     def save(self, task: Task) -> None:
+        ProjectConfig.validate_task(task.config)
         atomic_json(task.paths.root / "task.json", record(task))
         log_event(task.paths.logs, "task.saved", entity_id=task.id, status=task.status)
 
@@ -54,6 +55,7 @@ class TaskRepository:
         data = read_json(paths.root / "task.json")
         if data["id"] != task_id or data["project_id"] != project_id:
             raise ValueError("Task ownership mismatch")
+        ProjectConfig.validate_task(data.get("config", {}))
         log_event(paths.logs, "task.loaded", entity_id=task_id)
         return Task(**{**data, "status": TaskStatus(data["status"]), "paths": paths})
 
@@ -88,6 +90,11 @@ class TaskManager:
         self.project_access = project_access
         self.conversations = conversations
         self.context_builder = context_builder if context_builder is not None else ConversationContextBuilder()
+
+    @property
+    def results(self):
+        from .results import RunResultQuery
+        return RunResultQuery(self)
 
     @property
     def ownership(self):
@@ -137,12 +144,14 @@ class TaskManager:
 
     @workspace_locked
     def create(self, project: Project, title: str, *,
-               default_engine: Optional[str] = None) -> Task:
+               default_engine: Optional[str] = None, config: Optional[dict] = None) -> Task:
         project = self.require_project(project)
+        ProjectConfig.validate_task(config if config is not None else {})
         self.initialize(project)
         task_id = new_id()
         task = Task(task_id, project.id, title, self.repository.paths(project, task_id),
-                    default_engine=default_engine)
+                    default_engine=default_engine,
+                    config=ProjectConfig.merge(project.config.task_defaults, config or {}))
         self.repository.save(task)
         log_event(task.paths.logs, "task.created", entity_id=task.id,
                   related_id=project.id)
@@ -159,6 +168,7 @@ class TaskManager:
         current.title = task.title
         current.default_engine = task.default_engine
         current.metadata = deepcopy(task.metadata)
+        current.config = deepcopy(task.config)
         self.repository.save(current)
 
     @workspace_locked
@@ -217,6 +227,7 @@ class TaskManager:
         clone = self.create(project, title if title is not None else source.title,
                             default_engine=source.default_engine)
         clone.metadata = deepcopy(source.metadata)
+        clone.config = deepcopy(source.config)
         destination = self.conversations(clone)
         messages = self.context_builder.for_clone(self.conversations(source).list())
         for message in messages:

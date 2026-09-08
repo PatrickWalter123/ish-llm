@@ -1,4 +1,4 @@
-"""Workflow directory component; definition CRUD and Graph execution are planned."""
+"""Workflow graph definition CRUD; Graph execution is application-owned."""
 
 from .component import WorkflowComponent, WorkflowPaths
 

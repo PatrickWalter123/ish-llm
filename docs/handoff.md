@@ -6,7 +6,97 @@ Continue development of a production-oriented Linux TUI AI client built with Pyt
 
 Read `AGENTS.md` and `docs/architecture.md` before making architectural changes.
 
-## Latest: BaseEngine and inherited LiteLLM Loop (2026-09-08)
+## Latest: generic Project component storage
+
+* Component now declares name/directory and implements JSON codecs, configuration,
+  named record CRUD, safe directory initialization/removal and definition cloning.
+  Registry no longer imports tools or requires resolve_tools; optional runtime
+  exports are generic. ComponentToolResolver is the Tool-specific adapter, and
+  RunManager still accepts capabilities=components and custom tool resolvers.
+* Tools, Workflows and Subagents inherit the base. tools/component.json retains
+  enabled names and extra config; optional records/<tool-name>.json stores native
+  function definitions with extension keys, validated against registered handlers.
+  Subagents and Workflows store open dict model settings/graph documents. Neither
+  class executes nodes, validates a fixed graph format, or adds another Run layer.
+* projects.component(project, name) returns ComponentData for locked, lifecycle-
+  checked CRUD. create/set_components initialize declared directories. Disable
+  retains data; remove_component(permanent=True) requires detached Tasks and
+  disables before safe tree removal. Failure can leave disabled partial data.
+* Base clones configuration and records only, retaining IDs for graph references.
+  Old tools config and empty workflow roots remain readable; legacy graph artifacts
+  are retained without implicit import. Python custom components must now declare
+  directory and inherit the base or implement the expanded ProjectComponent API.
+* Tests cover open-key round trips, update/replace/delete, atomic-write failure,
+  cloning, lifecycle/ownership, registry/path rejection, Windows junctions, legacy
+  workflows, concurrent locked updates, generic export/import boundaries and
+  persisted tool definitions reaching LoopEngine with trusted handler execution.
+
+Final validation: 191 tests passed on Python 3.9.13 (128.472 seconds) and
+Python 3.13.7 (116.750 seconds). Both compile checks and the offline custom Engine
+example passed. Full output: test-results-python39.txt / test-results-python313.txt.
+No live provider calls were made; the existing actual-SDK/mock-SSE tests passed.
+
+## Previous: Run-owned results and reusable model inference
+
+* Removed ProjectExecutionStore and Project summary writes. CompletionResult stays
+  in Run metadata; RunRepository finalizes interrupted observations on terminal
+  saves/recovery. ExecutionResult is now an in-memory view of one Run.
+* RunResultQuery provides Project/Task load/list via projects.results, tasks.results
+  and manager.results. Queries hold workspace ownership, support deleted/running
+  filters and injectable Run readers. Permanent Task deletion removes Run history;
+  cloning does not copy it. Old Project state/executions files are ignored and left
+  untouched, never used to resurrect missing Runs.
+* Added inference/EmbeddingModel and RerankModel calling LiteLLM aembedding/arerank.
+  Open kwargs, SDK response types, errors and cancellation are preserved. Inputs and
+  option containers are isolated while SDK handles retain identity. No Run/Step
+  creation, engine registration, file writes or automatic usage events occur here.
+* Shared request-container copying lives in providers/parameters.py; BaseEngine's
+  public helper delegates there. Inference does not import Engines/services/core
+  or eagerly import the SDK. ProjectConfig.data.inference can hold optional model
+  defaults, with Task overrides; RAG/index lifecycle remains with components.
+* Tests cover Run-only persistence, Task/Project query equivalence and filtering,
+  legacy summary isolation, recovery, deletion/clone policy, provider dispatch,
+  model argument forwarding, concurrency, cancellation and import boundaries.
+
+Final validation: all 176 tests passed on Python 3.9.13 (121.891 seconds) and
+Python 3.13.7 (137.201 seconds). Compile checks and the offline custom Engine
+example passed on both. Completion SDK/mock-SSE coverage remains; inference
+dispatch uses installed SDK entry points with mocked async calls, not live model
+requests. Full outputs: test-results-python39.txt and test-results-python313.txt.
+
+## Previous: flexible configuration and Project execution results
+
+* ProjectConfig now holds default_engine/completion/engines/task_defaults/data.
+  Task.config is persisted, saved, cloned and exposed through EngineContext.settings.
+  Loop resolves Project -> Task -> constructor overrides on a per-Run instance.
+  Old stored flat provider fields migrate on load; Python callers use the new API.
+* CompletionResult/ExecutionResult live in core/results.py. COMPLETION events carry
+  stable per-call observations. BaseEngine forwards observations alongside text;
+  include_events=False is a standalone text-only opt-out. Raw provider payloads,
+  prompts, headers and credentials are not copied into result files.
+* RunManager records call snapshots in Run metadata then writes atomic Project
+  state/executions/<run-id>.json summaries via ProjectExecutionStore. ProjectManager
+  exposes results.load/list. Every terminal Run gets a summary, including fake,
+  preparation-only, failed and interrupted Runs. Recovery rebuilds missing summaries
+  and interrupts stale observations without replay. Incomplete usage remains unknown.
+* Removed the application credential service and its paths/CLI argument/imports.
+  SDK environment or runtime-only completion_kwargs handles authentication. Updated
+  obsolete documentation/instructions and maintained credential-free JSON/logs.
+* Added regression coverage for configuration persistence/precedence/isolation,
+  migration, summary aggregation, usage-only chunks, failed/partial completions,
+  recovery, clone/delete policy and payload exclusion. Updated old event-count
+  assumptions and TaskManager.save to persist the new configuration.
+
+Final validation: all 165 tests passed on Python 3.9.13 (108.792 seconds) and
+Python 3.13.7 (84.603 seconds). Additional actual-SDK mock-SSE assertions verified
+usage-only chunks, total_tokens=10 across two calls, and finish reasons
+tool_calls/stop on both versions. Result model type hints resolve on both.
+Compilation, the offline custom Engine example and demo help also passed.
+No live provider calls were made. Full outputs: test-results-python39.txt and
+test-results-python313.txt; extra SDK checks: sdk-results-python39.txt and
+sdk-results-python313.txt.
+
+## Previous: BaseEngine and inherited LiteLLM Loop (2026-09-08)
 
 * Renamed StepEngine to BaseEngine and moved it into engines/base.py. Removed
   engines/step.py and private engines/_completion.py. Public exports, preparation,
@@ -166,7 +256,7 @@ Implemented:
 * LoopEngine: streaming content, fragmented tool calls, registered async tools, and bounded iteration
 * dedicated stream thread and bounded async bridge, with late-delta suppression on cancellation
 * per-request/tool timeouts, no automatic retries, and validation before tool batches execute
-* environment-backed SecretManager and optional Project API base/temperature
+* provider configuration (superseded by the extensible settings API above)
 * RunManager `on_event` callback after persistence, and `python -m ish.demo` for streaming output
 * regression tests for real-time delivery, tools, failure, cancellation, timeouts, and cross-Task concurrency
 * an installed LiteLLM SDK integration test with mock SSE transport; no live model request
@@ -411,7 +501,7 @@ It delegates:
 * migration to ProjectMigrator
 * Task cleanup to TaskManager or TaskMaintenance
 
-Do not move Memory, Workflow, Secret, Tool, or Task directory internals into ProjectManager.
+Do not move Memory, Workflow, Tool, or Task directory internals into ProjectManager.
 
 ## TaskManager Boundary
 
@@ -487,7 +577,7 @@ SingleEngine should:
 
 * construct model messages from EngineContext
 * use Project configuration
-* resolve credentials through SecretManager rather than plain Project JSON
+* use SDK environment or runtime-only credentials
 * emit an LLM Step
 * emit TEXT_DELTA events while streaming
 * propagate cancellation correctly
