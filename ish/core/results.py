@@ -54,6 +54,8 @@ class ExecutionResult:
     completions: list[CompletionResult] = field(default_factory=list)
     # None means unknown/partial, never an invented zero for missing usage.
     usage: dict = field(default_factory=dict)
+    error: Optional[str] = None
+    error_code: Optional[str] = None
 
     @classmethod
     def from_run(cls, project_id: str, run: Run) -> "ExecutionResult":
@@ -66,7 +68,7 @@ class ExecutionResult:
                           and all(item.usage_complete for item in completions) else None)
         return cls(project_id, run.task_id, run.id, run.engine, run.status,
                    run.started_at, run.ended_at, duration_seconds(run.started_at, run.ended_at),
-                   completions=completions, usage=usage)
+                   completions=completions, usage=usage, error=run.error, error_code=run.error_code)
 
     @property
     def total_tokens(self) -> Optional[int]:

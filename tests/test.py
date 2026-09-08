@@ -28,52 +28,22 @@ def on_engine_event(run, event):
         print(event.text, end="", flush=True)
 
 
-# 애플리케이션에서 하나를 만들어 유지합니다.
-run_manager = RunManager(
-    tasks=task_manager,
-    engines=engine_registry,
-    on_event=on_engine_event,
-)
-
-
-# UI의 전송 버튼 / Enter 이벤트에서 호출
-async def on_user_input(project, task, text: str):
-    message = await run_manager.submit(
-        project,
-        task,
-        text,
-        engine="loop",
-    )
-    return message
-
-
-# 애플리케이션 종료 시 호출
-async def on_app_shutdown():
-    await run_manager.shutdown()
+# Task마다 RunManager를 생성합니다.
+async def on_user_input(run_manager, text: str):
+    return await run_manager.submit(text, engine="loop")
 
 
 async def main():
+    project = project_manager.create(
+        "개발 프로젝트", config=ProjectConfig(completion={"model": "openai/gpt-4o-mini"}))
+    task = task_manager.create(project, "로그인 기능 개발")
+    run_manager = RunManager(task_manager, engine_registry, task=task, on_event=on_engine_event)
     try:
-        project = project_manager.create(
-			"개발 프로젝트",
-			config=ProjectConfig(default_engine="loop", completion={'model': "openai/gpt-4o-mini"}),
-		)
-        task = task_manager.create(
-			project,
-			"로그인 기능 개발",
-		)
-
-        await on_user_input(
-            project,
-            task,
-            "Python asyncio를 간단히 설명해줘.",
-        )
-        # 예제 프로그램이 답변 도중 종료되지 않도록 기다립니다.
-        # UI의 전송 이벤트에서는 이 대기를 넣지 않아도 됩니다.
-        await run_manager.wait_idle(project, task)
+        await on_user_input(run_manager, "Python asyncio를 간단히 설명해줘.")
+        await run_manager.wait_idle()
         print()
     finally:
-        await on_app_shutdown()
+        await run_manager.shutdown()
 
 
 def main2():

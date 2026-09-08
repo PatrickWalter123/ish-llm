@@ -34,7 +34,8 @@ class ProjectComponent(Protocol):
     def update(self, project: Project, identifier: str, changes: dict) -> dict: ...
     def delete(self, project: Project, identifier: str) -> None: ...
     def delete_directory(self, project: Project) -> None: ...
-    def exports(self, project: Project) -> dict[str, Any]: ...
+    capabilities: tuple[str, ...]
+    def resolve(self, project: Project, capability: str) -> Any: ...
     def clone(self, source: Project, destination: Project) -> None: ...
 
 
@@ -43,12 +44,13 @@ class Component:
 
     component.json holds configuration; records/<id>.json holds named definitions.
     Direct use requires workspace ownership; ProjectManager.component provides a
-    lifecycle-checked, locked CRUD handle. Override validation/exports for domain
+    lifecycle-checked, locked CRUD handle. Override validation/resolve for domain
     semantics, and clone for artifacts outside this common JSON layout.
     """
 
     name: str
     directory: str
+    capabilities: tuple[str, ...] = ()
 
     def root(self, project: Project) -> Path:
         directory = validate_name(self.directory)
@@ -153,9 +155,9 @@ class Component:
         if root.exists():
             remove_named_tree(project.paths.root, root, self.directory)
 
-    def exports(self, project: Project) -> dict[str, Any]:
-        """Optional runtime capabilities; the base has no Tool/Engine dependency."""
-        return {}
+    def resolve(self, project: Project, capability: str) -> Any:
+        """Create only the requested, declared runtime capability."""
+        raise ValueError("Unsupported component capability")
 
     def clone(self, source: Project, destination: Project) -> None:
         self.configure(destination, self.configuration(source))

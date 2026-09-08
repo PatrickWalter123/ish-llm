@@ -7,7 +7,7 @@ from .base import BaseEngine, Engine, EngineContext, EngineEvent, EngineEventTyp
 
 
 class PipelineError(RuntimeError):
-    """Sanitized preparation/stage failure."""
+    """Preparation/stage lifecycle failure."""
 
 
 class PreparationStep(BaseEngine):

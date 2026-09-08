@@ -69,48 +69,60 @@ class StepStatus(StrEnum):
 # Project: extensible, JSON-only configuration passed to Tasks and Engines
 # ---------------------------------------------------------------------------
 
-@dataclass(slots=True)
-class ProjectConfig:
-    default_engine: str = "loop"
-    completion: dict = field(default_factory=dict)
-    engines: dict = field(default_factory=dict)
-    task_defaults: dict = field(default_factory=dict)
-    data: dict = field(default_factory=dict)
+class ProjectConfig(dict):
+    """Open JSON workspace settings with mapping access and attribute shortcuts.
 
-    def __post_init__(self) -> None:
+    Unknown top-level keys round-trip unchanged. Reserved sections are validated
+    when constructing or saving; nested mutation is allowed between saves.
+    """
+
+    def __init__(self, values: Optional[dict] = None, **settings) -> None:
+        defaults = {"default_engine": "loop", "completion": {}, "engines": {},
+                    "task_defaults": {}, "data": {}}
+        if values is not None:
+            defaults.update(deepcopy(dict(values)))
+        defaults.update(deepcopy(settings))
+        super().__init__(defaults)
         self.validate()
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __setattr__(self, name, value):
+        self[name] = value
 
     @staticmethod
     def validate_settings(value: dict) -> None:
-        """Reject runtime objects, lossy JSON keys and persisted credentials."""
+        """Check JSON compatibility without restricting application field names."""
         if not isinstance(value, dict):
             raise TypeError("Settings must be a dictionary")
-
         def check(item):
             if isinstance(item, dict):
                 for key, nested in item.items():
                     if not isinstance(key, str):
                         raise TypeError("Settings keys must be strings")
-                    if key.lower() in {"api_key", "authorization", "password", "credentials",
-                                      "access_token", "secret_key", "api_token"}:
-                        raise ValueError("Credentials belong in the environment or runtime arguments")
                     check(nested)
             elif isinstance(item, list):
                 for nested in item:
                     check(nested)
             elif item is not None and not isinstance(item, (str, bool, int, float)):
                 raise TypeError("Settings must contain only JSON values")
-
         check(value)
         json.dumps(value, allow_nan=False)
 
     def validate(self) -> None:
-        if not isinstance(self.default_engine, str) or not self.default_engine.strip():
+        self.validate_settings(self)
+        if not isinstance(self.get("default_engine"), str) or not self["default_engine"].strip():
             raise ValueError("Default Engine must be a nonempty string")
-        for section in (self.completion, self.engines, self.task_defaults, self.data):
-            self.validate_settings(section)
-        if any(not isinstance(options, dict) for options in self.engines.values()):
-            raise TypeError("Each Engine configuration must be a dictionary")
+        for section in ("completion", "engines", "task_defaults", "data"):
+            if not isinstance(self.get(section), dict):
+                raise TypeError(f"{section} must be a dictionary")
+        self.validate_task(self)
         self.validate_task(self.task_defaults)
 
     @classmethod
@@ -121,6 +133,17 @@ class ProjectConfig:
                 raise TypeError("Task configuration sections must be dictionaries")
         if any(not isinstance(options, dict) for options in config.get("engines", {}).values()):
             raise TypeError("Each Engine configuration must be a dictionary")
+
+    def to_dict(self) -> dict:
+        self.validate()
+        return deepcopy(dict(self))
+
+    def serialize(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, allow_nan=False)
+
+    @classmethod
+    def deserialize(cls, value: str) -> "ProjectConfig":
+        return cls.from_dict(json.loads(value))
 
     @staticmethod
     def merge(defaults: dict, overrides: dict) -> dict:
@@ -133,25 +156,23 @@ class ProjectConfig:
         return result
 
     def for_engine(self, name: str, task_config: Optional[dict] = None) -> dict:
-        """Return an isolated Project + Task settings snapshot for one Engine."""
+        """Detached settings including arbitrary workspace and Task keys."""
+        self.validate()
         task_config = task_config if task_config is not None else {}
         self.validate_task(task_config)
-        return {
-            "completion": self.merge(self.completion, task_config.get("completion", {})),
-            "engine": self.merge(self.engines.get(name, {}), task_config.get("engines", {}).get(name, {})),
-            "data": self.merge(self.data, task_config.get("data", {})),
-        }
+        result = self.merge(dict(self), task_config)
+        result["engine"] = self.merge(self.engines.get(name, {}), task_config.get("engines", {}).get(name, {}))
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "ProjectConfig":
-        """Load current settings and migrate the former flat provider fields."""
+        cls.validate_settings(data)
         data = deepcopy(data)
-        completion = data.pop("completion", {})
-        legacy = {key: data.pop(key) for key in ("model", "temperature", "api_base") if key in data}
-        data.pop("credential_ref", None)  # Obsolete references are never resolved.
-        known = {key: data.pop(key) for key in ("default_engine", "engines", "task_defaults") if key in data}
-        custom = data.pop("data", {})
-        return cls(completion=cls.merge(legacy, completion), data=cls.merge(data, custom), **known)
+        # Preserve the historical flat model settings while leaving new keys in place.
+        if "completion" not in data:
+            legacy = {key: data.pop(key) for key in ("model", "temperature", "api_base") if key in data}
+            data["completion"] = legacy
+        return cls(data)
 
 
 @dataclass(slots=True)
@@ -217,6 +238,7 @@ class Run:
     ended_at: Optional[str] = None
     error: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+    error_code: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -181,14 +181,14 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.task = self.tasks.create(self.project, "private-task-title")
         self.registry = EngineRegistry()
         self.registry.register("fake", FakeStreamingEngine(chunks=("private-answer",)))
-        self.manager = RunManager(self.tasks, self.registry)
+        self.manager = RunManager(self.tasks, self.registry, task=self.task)
         self.addAsyncCleanup(self.manager.shutdown)
 
     async def test_queued_and_idle_attached_tasks_cannot_be_deleted_or_cloned(self) -> None:
-        await self.manager.submit(self.project, self.task, "private-prompt")
+        await self.manager.submit("private-prompt")
         for phase in ("queued", "idle"):
             if phase == "idle":
-                await self.manager.wait_idle(self.project, self.task)
+                await self.manager.wait_idle()
             for permanent in (False, True):
                 for manager, item in ((self.tasks, self.task), (self.projects, self.project)):
                     with self.assertRaisesRegex(ValueError, "runtime is attached"):
@@ -200,13 +200,13 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.task.paths.root.exists())
 
     async def test_second_manager_cannot_recover_an_attached_task(self) -> None:
-        await self.manager.start(self.project, self.task)
-        other = RunManager(self.tasks, self.registry)
+        await self.manager.start()
+        other = RunManager(self.tasks, self.registry, task=self.task)
         self.addAsyncCleanup(other.shutdown)
         with self.assertRaisesRegex(ValueError, "already has an attached runtime"):
-            await other.start(self.project, self.task)
+            await other.start()
         await self.manager.shutdown()
-        await other.start(self.project, self.task)
+        await other.start()
         # Repeated shutdown on the old owner must not release the new owner.
         await self.manager.shutdown()
         with self.assertRaises(ValueError):
@@ -215,26 +215,26 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_recovery_failure_releases_runtime_attachment(self) -> None:
         with patch.object(self.manager, "_recover", side_effect=ValueError("broken")):
             with self.assertRaises(ValueError):
-                await self.manager.start(self.project, self.task)
+                await self.manager.start()
         self.tasks.delete(self.task)
 
     async def test_failed_and_interrupted_runs_have_terminal_domain_logs(self) -> None:
         self.registry.register("broken", FakeStreamingEngine(fail_after=0))
-        await self.manager.submit(self.project, self.task, "private-prompt", engine="broken")
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.submit("private-prompt", engine="broken")
+        await self.manager.wait_idle()
         failed_run, = self.manager.repository.list(self.task)
         failed_step, = self.manager.steps.list(failed_run)
         self.assertIn("run.failed", [row["event"] for row in records(failed_run.paths.logs)])
         self.assertIn("step.failed", [row["event"] for row in records(failed_step.paths.logs)])
 
         self.registry.register("blocked", FakeStreamingEngine(gate=asyncio.Event()))
-        await self.manager.submit(self.project, self.task, "private-prompt", engine="blocked")
+        await self.manager.submit("private-prompt", engine="blocked")
         async with timeout(10):
             while not any(message.status == MessageStatus.STREAMING and message.content
                           for message in ConversationStore(self.task.paths.conversation).list()):
                 await asyncio.sleep(0.001)
-        self.assertTrue(await self.manager.interrupt(self.project, self.task))
-        await self.manager.wait_idle(self.project, self.task)
+        self.assertTrue(await self.manager.interrupt())
+        await self.manager.wait_idle()
         interrupted = self.manager.repository.list(self.task)[-1]
         step, = self.manager.steps.list(interrupted)
         self.assertIn("run.interrupted", [row["event"] for row in records(interrupted.paths.logs)])
@@ -243,8 +243,8 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_each_domain_records_lifecycle_without_conversation_or_metadata(self) -> None:
         self.task.metadata = {"Authorization": "private-authorization"}
         self.tasks.save(self.task)
-        await self.manager.submit(self.project, self.task, "private-prompt")
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.submit("private-prompt")
+        await self.manager.wait_idle()
         run, = self.manager.repository.list(self.task)
         step, = self.manager.steps.list(run)
         for model, event in ((self.project, "project.created"), (self.task, "request.queued"),

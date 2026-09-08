@@ -25,11 +25,11 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.engines = EngineRegistry()
         self.fake = FakeStreamingEngine()
         self.engines.register("fake", self.fake)
-        self.manager = RunManager(self.tasks, self.engines)
+        self.manager = RunManager(self.tasks, self.engines, task=self.task)
         self.addAsyncCleanup(self.manager.shutdown)
 
     async def idle(self, task=None):
-        await asyncio.wait_for(self.manager.wait_idle(self.project, task or self.task), 10)
+        await asyncio.wait_for(self.manager.wait_idle(), 10)
 
     async def test_preparations_feed_loop_factories_and_have_persistent_steps(self):
         order = []
@@ -51,7 +51,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             PreparationStep("Read documents", read, kind="retrieval"),
             PreparationStep("Prepare environment", configure, kind="shell"), loop,
         ]))
-        await self.manager.submit(self.project, self.task, "question")
+        await self.manager.submit("question")
         await self.idle()
         run, = self.manager.runs.list(self.task)
         self.assertEqual(run.status, RunStatus.COMPLETED)
@@ -69,15 +69,14 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         async def fail(context):
             raise RuntimeError("private-preparation-error")
         self.engines.register("pipeline", PipelineEngine([PreparationStep("Prepare", fail), self.fake]))
-        await self.manager.submit(self.project, self.task, "fail")
-        await self.manager.submit(self.project, self.task, "next", engine="fake")
+        await self.manager.submit("fail")
+        await self.manager.submit("next", engine="fake")
         await self.idle()
         first, second = self.manager.runs.list(self.task)
         self.assertEqual([first.status, second.status], [RunStatus.FAILED, RunStatus.COMPLETED])
         self.assertEqual(self.manager.steps.list(first)[0].status, StepStatus.FAILED)
         self.assertEqual([ctx.messages[-1].content for ctx in self.fake.contexts], ["next"])
-        for path in self.project.paths.root.rglob("*.json*"):
-            self.assertNotIn("private-preparation-error", path.read_text(encoding="utf-8"))
+        self.assertIn("private-preparation-error", self.manager.steps.list(first)[0].error)
 
     async def test_interrupt_preparation_closes_action_and_only_next_request_runs_loop(self):
         entered, release, closed = asyncio.Event(), asyncio.Event(), asyncio.Event()
@@ -89,10 +88,10 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     closed.set()
         self.engines.register("pipeline", PipelineEngine([PreparationStep("Prepare", prepare), self.fake]))
-        await self.manager.submit(self.project, self.task, "first")
+        await self.manager.submit("first")
         await asyncio.wait_for(entered.wait(), 5)
-        await self.manager.submit(self.project, self.task, "second")
-        self.assertTrue(await self.manager.interrupt(self.project, self.task))
+        await self.manager.submit("second")
+        self.assertTrue(await self.manager.interrupt())
         await self.idle()
         first, second = self.manager.runs.list(self.task)
         self.assertTrue(closed.is_set())
@@ -111,7 +110,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.engines.register("pipeline", PipelineEngine([
             PreparationStep("Prepare", prepare, timeout_seconds=0.02), self.fake,
         ]))
-        await self.manager.submit(self.project, self.task, "request")
+        await self.manager.submit("request")
         await self.idle()
         run, = self.manager.runs.list(self.task)
         self.assertEqual(run.status, RunStatus.FAILED)
@@ -135,12 +134,14 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
                        system_prompt=lambda ctx: ctx.state["input"]),
         ]))
         other = self.tasks.create(self.project, "Other")
-        await self.manager.submit(self.project, self.task, "one")
-        await self.manager.submit(self.project, other, "two")
+        other_manager = RunManager(self.tasks, self.engines, task=other)
+        self.addAsyncCleanup(other_manager.shutdown)
+        await self.manager.submit("one")
+        await other_manager.submit("two")
         await asyncio.wait_for(entered.wait(), 5)
         release.set()
-        await asyncio.gather(self.idle(), self.idle(other))
-        await self.manager.submit(self.project, self.task, "three")
+        await asyncio.gather(self.idle(), other_manager.wait_idle())
+        await self.manager.submit("three")
         await self.idle()
         self.assertEqual(len({id(state) for state in states}), 3)
         self.assertEqual({request["messages"][0]["content"] for request in completion.requests},
@@ -163,7 +164,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         for fail in (True, False):
             name = "bad-" + str(fail)
             self.engines.register(name, PipelineEngine([BadStage(fail), self.fake]))
-            await self.manager.submit(self.project, self.task, "request", engine=name)
+            await self.manager.submit("request", engine=name)
             await self.idle()
         self.assertEqual(closed, [True, True])
         self.assertEqual(self.fake.contexts, [])
@@ -176,7 +177,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.engines.register("pipeline", PipelineEngine([
             PipelineEngine([PreparationStep("Prepare", prepare, timeout_seconds=None)]), self.fake,
         ]))
-        await self.manager.submit(self.project, self.task, "request")
+        await self.manager.submit("request")
         await self.idle()
         self.assertEqual(order, ["prepare"])
         self.assertEqual(self.manager.runs.list(self.task)[0].status, RunStatus.COMPLETED)

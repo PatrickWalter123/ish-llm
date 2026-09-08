@@ -6,7 +6,37 @@ Continue development of a production-oriented Linux TUI AI client built with Pyt
 
 Read `AGENTS.md` and `docs/architecture.md` before making architectural changes.
 
-## Latest: generic Project component storage
+## Latest: Task-bound Run API, open settings and independent component data
+
+* RunManager requires task= at construction. start/submit/wait_idle/interrupt no
+  longer take Project/Task arguments; shutdown affects only its bound Task.
+  Applications share the workspace repository/TaskManager/registries across
+  per-Task managers. Queue durability, cancellation drain and stale-Run rules stay.
+* Registration validation rejects unknown Engines/components before admitting new
+  messages. RunRequestError.code identifies the rejection. Run.error_code and
+  query views expose execution outcomes; raw error details are no longer masked.
+* on_run_event receives separate RunEvent STARTED/COMPLETED/FAILED/INTERRUPTED
+  snapshots after persistence. Notifications run on the event loop, isolate
+  observer errors, and include newly interrupted stale Runs during recovery.
+* ProjectConfig is an open dict subclass, with constructor kwargs, attribute
+  shortcuts, to_dict/serialize/deserialize and arbitrary top-level keys. Existing
+  reserved sections/JSON types remain validated; no key-name secret restrictions,
+  obsolete-reference stripping or URL credential/query stripping remains.
+* Tool CRUD/configuration/clone no longer needs handlers. Runtime resolution alone
+  binds handlers. Other components retain data-only CRUD. Components declare a
+  capabilities tuple and resolve only the requested name; exports was removed.
+* Updated all caller examples and regression tests for Task-bound managers, and
+  added focused public API tests for notifications, request validation, per-Task
+  shutdown/recovery, open configuration and independent/lazy component behavior.
+
+Validation: 204 tests passed on Python 3.9.13 (168.825 seconds) and Python 3.13.7
+(152.722 seconds). Additional focused checks on both verify stdlib dataclass
+serialization of ProjectConfig and preservation of current top-level keys alongside
+legacy flat-config migration. Compile checks, both offline custom Engine examples,
+and demo import/help checks passed. No live model request was used.
+Full logs: test-results-python39.txt and test-results-python313.txt.
+
+## Previous: generic Project component storage
 
 * Component now declares name/directory and implements JSON codecs, configuration,
   named record CRUD, safe directory initialization/removal and definition cloning.

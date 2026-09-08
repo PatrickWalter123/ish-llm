@@ -68,9 +68,8 @@ class LoopEngine(BaseEngine):
             raise ValueError("Completion model is required")
         if request.get("api_base") is not None:
             url = urlsplit(request["api_base"])
-            if (url.scheme not in ("http", "https") or not url.hostname or url.username
-                    or url.password or url.query or url.fragment):
-                raise ValueError("api_base must be an HTTP URL without credentials or query")
+            if (url.scheme not in ("http", "https") or not url.hostname):
+                raise ValueError("api_base must be an HTTP URL")
         definitions = context.tools.definitions()
         if definitions:
             request["tools"] = definitions

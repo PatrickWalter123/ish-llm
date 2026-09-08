@@ -145,7 +145,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
         self.engines = EngineRegistry()
         self.engine = FakeStreamingEngine()
         self.engines.register("fake", self.engine)
-        self.manager = RunManager(self.tasks, self.engines)
+        self.manager = RunManager(self.tasks, self.engines, task=self.task)
         self.addAsyncCleanup(self.manager.shutdown)
 
     async def until(self, predicate):
@@ -155,7 +155,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(wait(), 5)
 
     async def test_other_process_cannot_recover_or_mutate_attached_workspace(self):
-        await self.manager.start(self.project, self.task)
+        await self.manager.start()
         code = textwrap.dedent('''
             import asyncio, sys
             from pathlib import Path
@@ -172,7 +172,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
             project = Project(sys.argv[2], "stale", projects.repository.paths(sys.argv[2]))
             task = Task(sys.argv[3], project.id, "stale", TaskPaths(project.paths.tasks / sys.argv[3]))
             async def main():
-                manager = RunManager(tasks, EngineRegistry())
+                manager = RunManager(tasks, EngineRegistry(), task=task)
                 try:
                     for operation in (lambda: projects.create("bad"),
                                       lambda: projects.delete(project, permanent=True),
@@ -184,7 +184,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
                             continue
                         raise AssertionError("mutation was allowed")
                     try:
-                        await manager.start(project, task)
+                        await manager.start()
                     except WorkspaceBusyError:
                         print("blocked")
                     else:
@@ -202,12 +202,12 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ProjectRepository(self.root).load(self.project.id).title, "Project")
 
     async def test_shared_repository_cannot_attach_same_task_through_other_task_manager(self):
-        await self.manager.start(self.project, self.task)
+        await self.manager.start()
         other_tasks = TaskManager(project_access=self.projects.access)
-        other = RunManager(other_tasks, self.engines)
+        other = RunManager(other_tasks, self.engines, task=self.task)
         self.addAsyncCleanup(other.shutdown)
         with self.assertRaises(ValueError):
-            await other.start(self.project, self.task)
+            await other.start()
         with self.assertRaises(ValueError):
             other_tasks.delete(self.task)
 
@@ -251,7 +251,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
                 return super().create(role, *args, **kwargs)
 
         self.manager.conversations = lambda task: SlowStore(task.paths.conversation)
-        pending = asyncio.create_task(self.manager.submit(self.project, self.task, "once"))
+        pending = asyncio.create_task(self.manager.submit("once"))
         await self.until(entered.is_set)
         pending.cancel()
         await asyncio.sleep(0.02)
@@ -260,7 +260,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
         release.set()
         with self.assertRaises(asyncio.CancelledError):
             await pending
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.wait_idle()
         self.assertEqual(len(self.engine.contexts), 1)
         self.assertEqual(len(self.manager.runs.list(self.task)), 1)
 
@@ -276,7 +276,7 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
                 return super().delta(*args)
 
         self.manager.conversations = lambda task: SlowStore(task.paths.conversation)
-        await self.manager.submit(self.project, self.task, "slow")
+        await self.manager.submit("slow")
         await self.until(entered.is_set)
         shutdown = asyncio.create_task(self.manager.shutdown())
         await asyncio.sleep(0.02)
@@ -293,9 +293,9 @@ class RuntimeIOTests(unittest.IsolatedAsyncioTestCase):
             pass
 
     async def test_concurrent_submissions_are_serial_and_preserve_all_inputs(self):
-        await asyncio.gather(*(self.manager.submit(self.project, self.task, str(i))
+        await asyncio.gather(*(self.manager.submit(str(i))
                                for i in range(10)))
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.wait_idle()
         self.assertEqual([context.messages[-1].content for context in self.engine.contexts],
                          list(map(str, range(10))))
         self.assertEqual(self.engine.max_active, 1)

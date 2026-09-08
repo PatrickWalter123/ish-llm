@@ -22,6 +22,7 @@ from .tasks import TaskManager, TaskRuntime
 from .logging import log_event
 from .results import RunResultQuery
 from ish.core.results import CompletionResult
+from ish.compat import dataclass, StrEnum
 
 
 class RunRepository:
@@ -65,19 +66,53 @@ class RunEventPublisher:
                 log_event(run.paths.logs, "observer.failed", entity_id=run.id)
 
 
-class RunManager:
-    """One event-loop scheduler with OS workspace ownership and ordered storage."""
+class RunErrorCode(StrEnum):
+    ENGINE_NOT_REGISTERED = "engine_not_registered"
+    COMPONENT_NOT_REGISTERED = "component_not_registered"
+    CAPABILITY_FAILED = "capability_failed"
+    ENGINE_FAILED = "engine_failed"
+    INTERRUPTED = "interrupted"
+    PROCESS_RESTART = "process_restart"
 
-    def __init__(self, tasks: TaskManager, engines: EngineRegistry, *,
+
+class RunRequestError(ValueError):
+    """An actionable request rejection before queue admission."""
+
+    def __init__(self, code: RunErrorCode, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+class RunEventType(StrEnum):
+    STARTED = "started"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
+@dataclass(frozen=True, slots=True)
+class RunEvent:
+    type: RunEventType
+    run: Run
+
+
+class RunManager:
+    """One Task-bound scheduler; separate instances execute separate Tasks."""
+
+    def __init__(self, tasks: TaskManager, engines: EngineRegistry, *, task: Task,
                  runs: Optional[RunRepository] = None,
                  steps: Optional[StepManager] = None,
                  on_event: Optional[Callable[[Run, EngineEvent], None]] = None,
+                 on_run_event: Optional[Callable[[RunEvent], None]] = None,
                  repository: Optional[RunRepository] = None,
                  capabilities: Optional[Union[CapabilityResolver, ComponentRegistry]] = None,
                  conversations: Optional[Callable[[Task], ConversationStore]] = None,
                  context_builder: Optional[ConversationContextBuilder] = None) -> None:
         if repository is not None and runs is not None:
             raise ValueError("Specify repository or runs, not both")
+        if not isinstance(task, Task):
+            raise TypeError("RunManager requires a Task")
+        self._task = deepcopy(task)
         self.tasks = tasks
         self.engines = engines
         self.repository = repository if repository is not None else (
@@ -86,17 +121,18 @@ class RunManager:
         self.recorder = StepEventRecorder(self.steps)
         self.results = RunResultQuery(tasks, self.repository)
         self.events = RunEventPublisher(on_event)
+        self.on_run_event = on_run_event
         if capabilities is None:
             capabilities = ComponentRegistry()
         self.capabilities = (ComponentToolResolver(capabilities)
                              if isinstance(capabilities, ComponentRegistry) else capabilities)
         self.conversations = conversations if conversations is not None else tasks.conversations
         self.context_builder = context_builder if context_builder is not None else tasks.context_builder
-        self._runtimes: dict[tuple[str, str], TaskRuntime] = {}
+        self._active: Optional[TaskRuntime] = None
         self._closed = False
         self._control = None
         self._io = StorageIO(tasks.ownership)
-        self._stores: dict[tuple[str, str], ConversationStore] = {}
+        self._store_instance: Optional[ConversationStore] = None
 
     @property
     def on_event(self) -> Optional[Callable[[Run, EngineEvent], None]]:
@@ -116,32 +152,53 @@ class RunManager:
             self._control = asyncio.Lock()
         return self._control
 
-    def _store(self, task: Task) -> ConversationStore:
-        key = (task.project_id, task.id)
-        if key not in self._stores:
-            self._stores[key] = self.conversations(task)
-        return self._stores[key]
+    @property
+    def task(self) -> Task:
+        return deepcopy(self._task)
 
-    def _prepare(self, project: Project, task: Task):
-        project = self.tasks.require_project(project)
-        if task.project_id != project.id:
-            raise ValueError("Task requires its active owning Project")
-        current = self.tasks.load(project, task.id)
-        if task.paths.root.absolute() != current.paths.root.absolute():
-            raise ValueError("Task path ownership mismatch")
+    def _publish_run(self, run: Run) -> None:
+        if self.on_run_event is not None:
+            event = RunEvent(RunEventType(run.status.value if run.status != RunStatus.RUNNING else "started"),
+                             deepcopy(run))
+            try:
+                self.on_run_event(event)
+            except Exception:
+                log_event(run.paths.logs, "observer.failed", entity_id=run.id)
+
+    def _store(self, task: Task) -> ConversationStore:
+        if (task.project_id, task.id) != (self._task.project_id, self._task.id):
+            raise ValueError("Task does not match this RunManager")
+        if self._store_instance is None:
+            self._store_instance = self.conversations(task)
+        return self._store_instance
+
+    def _prepare(self):
+        project = self.tasks._owner(self._task)
+        current = self.tasks.load(project, self._task.id)
         if current.status == TaskStatus.DELETED:
             raise ValueError("Task is deleted")
         return project, current
 
-    async def _runtime(self, project: Project, task: Task) -> TaskRuntime:
+    def _validate_request(self, engine: Optional[str]) -> str:
+        project, task = self._prepare()
+        selected = engine if engine is not None else task.default_engine or project.config.default_engine
+        if not isinstance(selected, str) or selected not in self.engines.names():
+            raise RunRequestError(RunErrorCode.ENGINE_NOT_REGISTERED, "Requested Engine is not registered")
+        if isinstance(self.capabilities, ComponentToolResolver):
+            try:
+                self.capabilities.components.validate(project.components)
+            except ValueError as error:
+                raise RunRequestError(RunErrorCode.COMPONENT_NOT_REGISTERED, str(error)) from error
+        return selected
+
+    async def _runtime(self) -> TaskRuntime:
         # Caller holds _control. OS ownership is retained before recovery; the
         # worker and all pending storage finish before that ownership is released.
         if self._closed:
             raise RuntimeError("RunManager is shut down")
-        project, current = await self._io.run(self._prepare, project, task)
-        key = (project.id, task.id)
-        if key in self._runtimes:
-            runtime = self._runtimes[key]
+        project, current = await self._io.run(self._prepare)
+        if self._active is not None:
+            runtime = self._active
             if runtime.worker is not None and runtime.worker.done():
                 runtime.worker.result()
                 raise RuntimeError("Task worker has stopped")
@@ -149,52 +206,55 @@ class RunManager:
 
         def recover():
             # Revalidate under the same ownership scope as attachment/recovery.
-            owner, fresh = self._prepare(project, current)
+            owner, fresh = self._prepare()
             self.tasks.attach_runtime(fresh)
             try:
-                self._recover(fresh)
+                recovered = self._recover(fresh)
                 queued = [message.id for message in self._store(fresh).list()
                           if message.role == MessageRole.USER
                           and message.status == MessageStatus.QUEUED]
                 log_event(fresh.paths.logs, "runtime.started", entity_id=fresh.id,
                           count=len(queued))
-                return owner, fresh, queued
+                return owner, fresh, queued, recovered
             except BaseException:
                 self.tasks.detach_runtime(fresh)
                 raise
 
-        project, current, queued = await self._io.run(recover)
+        project, current, queued, recovered = await self._io.run(recover)
+        for run in recovered:
+            self._publish_run(run)
         runtime = TaskRuntime(deepcopy(project), current)
         for message_id in queued:
             runtime.queue.put_nowait(message_id)
-        self._runtimes[key] = runtime
-        runtime.worker = asyncio.create_task(self._worker(runtime), name=f"ish-task-{task.id}")
+        self._active = runtime
+        runtime.worker = asyncio.create_task(self._worker(runtime), name=f"ish-task-{current.id}")
         return runtime
 
-    async def _start(self, project: Project, task: Task) -> TaskRuntime:
+    async def _start(self) -> TaskRuntime:
         async with self._control_lock():
-            return await self._runtime(project, task)
+            return await self._runtime()
 
-    async def start(self, project: Project, task: Task) -> None:
+    async def start(self) -> None:
         """Recover a Task, then schedule only its durable queued requests."""
-        await drain_on_cancel(self._start(project, task))
+        await drain_on_cancel(self._start())
 
-    async def submit(self, project: Project, task: Task, content: str, *,
+    async def submit(self, content: str, *,
                      engine: Optional[str] = None) -> Message:
-        return await drain_on_cancel(self._submit(project, task, content, engine))
+        return await drain_on_cancel(self._submit(content, engine))
 
-    async def _submit(self, project: Project, task: Task, content: str,
+    async def _submit(self, content: str,
                       engine: Optional[str]) -> Message:
         async with self._control_lock():
-            runtime = await self._runtime(project, task)
+            if self._closed:
+                raise RuntimeError("RunManager is shut down")
+            selected = await self._io.run(self._validate_request, engine)
+            runtime = await self._runtime()
             def persist():
-                project_state = self.tasks.require_project(runtime.project)
-                selected = engine or runtime.task.default_engine or project_state.config.default_engine
                 message = self._store(runtime.task).create(
                     MessageRole.USER, content, MessageStatus.QUEUED,
                     metadata={"engine": selected})
                 log_event(runtime.task.paths.logs, "request.queued", entity_id=message.id,
-                          related_id=task.id)
+                          related_id=runtime.task.id)
                 return message
 
             message = await self._io.run(persist)
@@ -203,8 +263,8 @@ class RunManager:
             runtime.queue.put_nowait(message.id)
             return message
 
-    async def interrupt(self, project: Project, task: Task) -> bool:
-        runtime = self._runtimes.get((project.id, task.id))
+    async def interrupt(self) -> bool:
+        runtime = self._active
         if runtime is None:
             return False
         if not runtime.preparing and (runtime.execution is None or runtime.execution.done()):
@@ -214,11 +274,11 @@ class RunManager:
         if runtime.execution is not None:
             runtime.execution.cancel()
         await finished.wait()
-        await self._io.run(log_event, runtime.task.paths.logs, "runtime.interrupted", entity_id=task.id)
+        await self._io.run(log_event, runtime.task.paths.logs, "runtime.interrupted", entity_id=runtime.task.id)
         return True
 
-    async def wait_idle(self, project: Project, task: Task) -> None:
-        runtime = await drain_on_cancel(self._start(project, task))
+    async def wait_idle(self) -> None:
+        runtime = await drain_on_cancel(self._start())
         assert runtime.worker is not None
         joined = asyncio.create_task(runtime.queue.join())
         try:
@@ -243,39 +303,38 @@ class RunManager:
     async def _shutdown_locked(self) -> None:
         """Stop accepting input, interrupt active work, and preserve the durable queue."""
         self._closed = True
-        workers = []
-        for runtime in self._runtimes.values():
-            runtime.closed = True
-            if runtime.execution is not None:
-                runtime.execution.cancel()
-            runtime.queue.put_nowait(None)
-            if runtime.worker is not None:
-                workers.append(runtime.worker)
+        runtime = self._active
+        if runtime is None:
+            return
+        runtime.closed = True
+        if runtime.execution is not None:
+            runtime.execution.cancel()
+        runtime.queue.put_nowait(None)
         try:
-            results = await asyncio.gather(*workers, return_exceptions=True)
+            if runtime.worker is not None:
+                await runtime.worker
         finally:
-            for key, runtime in list(self._runtimes.items()):
-                if runtime.worker is None or runtime.worker.done():
-                    await self._io.run(self._detach, runtime.task)
-                    self._stores.pop(key, None)
-                    del self._runtimes[key]
-        for result in results:
-            if isinstance(result, BaseException):
-                raise result
+            if runtime.worker is None or runtime.worker.done():
+                await self._io.run(self._detach, runtime.task)
+                self._store_instance = None
+                self._active = None
 
     def _detach(self, task: Task) -> None:
         log_event(task.paths.logs, "runtime.stopped", entity_id=task.id)
         self.tasks.detach_runtime(task)
 
-    def _recover(self, task: Task) -> None:
+    def _recover(self, task: Task) -> list[Run]:
+        recovered = []
         store = self._store(task)
         messages = {message.id: message for message in store.list()}
         for run in self.repository.list(task):
             self.steps.recover(run)
             if run.status in (RunStatus.PENDING, RunStatus.RUNNING):
                 run.status = RunStatus.INTERRUPTED
+                run.error_code = RunErrorCode.PROCESS_RESTART
                 run.ended_at = now()
                 self.repository.save(run)
+                recovered.append(deepcopy(run))
                 log_event(run.paths.logs, "run.recovered", entity_id=run.id,
                           status=run.status)
             # The Run is written before committing its input. A crash in that
@@ -291,6 +350,7 @@ class RunManager:
         task.current_run_id = None
         task.status = TaskStatus.IDLE
         self.tasks._save_runtime(task)
+        return recovered
 
     def _begin(self, runtime: TaskRuntime, message: Message) -> Run:
         runtime.project = self.tasks.require_project(runtime.project)
@@ -326,9 +386,16 @@ class RunManager:
                              self.capabilities.resolve_tools(deepcopy(runtime.project)))
 
     async def _consume(self, runtime: TaskRuntime, run: Run) -> None:
-        engine = self.engines.resolve(run.engine)
+        try:
+            engine = self.engines.resolve(run.engine)
+        except KeyError as error:
+            raise RunRequestError(RunErrorCode.ENGINE_NOT_REGISTERED, "Requested Engine is not registered") from error
         store = self._store(runtime.task)
-        events = engine.execute(await self._io.run(self._context, runtime, run))
+        try:
+            context = await self._io.run(self._context, runtime, run)
+        except Exception as error:
+            raise RunRequestError(RunErrorCode.CAPABILITY_FAILED, str(error)) from error
+        events = engine.execute(context)
         try:
             async for event in events:
                 if event.type == EngineEventType.TEXT_DELTA:
@@ -361,7 +428,7 @@ class RunManager:
         self.repository.save(run)
 
     def _finish(self, runtime: TaskRuntime, run: Run, status: RunStatus,
-                error: Optional[str] = None) -> None:
+                error: Optional[str] = None, error_code: Optional[str] = None) -> None:
         for step in self.steps.list(run):
             if step.status in (StepStatus.PENDING, StepStatus.RUNNING):
                 if status == RunStatus.FAILED:
@@ -372,6 +439,7 @@ class RunManager:
         store.set_status(run.assistant_message_id, MessageStatus(status.value))
         run.status = status
         run.error = error
+        run.error_code = error_code
         run.ended_at = now()
         self.repository.save(run)
         log_event(run.paths.logs, f"run.{status.value}", entity_id=run.id,
@@ -398,22 +466,24 @@ class RunManager:
                 if runtime.closed:
                     return
                 run = await self._io.run(self._begin, runtime, message)
+                self._publish_run(run)
                 runtime.preparing = False
                 runtime.execution = asyncio.create_task(self._consume(runtime, run))
                 if runtime.closed or runtime.interrupt_requested:
                     runtime.execution.cancel()
-                status, error = RunStatus.COMPLETED, None
+                status, error, error_code = RunStatus.COMPLETED, None, None
                 try:
                     await runtime.execution
                 except asyncio.CancelledError:
                     status = RunStatus.INTERRUPTED
-                except Exception:
-                    # Provider exception strings can contain credentials. Do not
-                    # persist raw exception messages or provider response objects.
-                    status, error = RunStatus.FAILED, "Engine execution failed"
+                    error_code = RunErrorCode.INTERRUPTED
+                except Exception as failure:
+                    status, error = RunStatus.FAILED, str(failure)
+                    error_code = failure.code if isinstance(failure, RunRequestError) else RunErrorCode.ENGINE_FAILED
                 finally:
                     try:
-                        await self._io.run(self._finish, runtime, run, status, error)
+                        await self._io.run(self._finish, runtime, run, status, error, error_code)
+                        self._publish_run(run)
                     finally:
                         runtime.execution = None
                         runtime.finished.set()

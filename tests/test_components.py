@@ -85,7 +85,7 @@ class ComponentTests(unittest.TestCase):
     def test_invalid_json_and_failed_atomic_replacement_keep_original_data(self):
         identifier = self.data.create({"kept": True})
         invalid = [{"value": object()}, {1: "lossy"}, {"value": float("nan")},
-                   {"password": "secret"}, [1], {"tuple": (1, 2)}]
+                   [1], {"tuple": (1, 2)}]
         for value in invalid:
             with self.subTest(value=type(value)):
                 with self.assertRaises((TypeError, ValueError)):
@@ -185,8 +185,9 @@ class ComponentTests(unittest.TestCase):
         class Search(Component):
             name = "search"
             directory = "search_index"
-            def exports(self, project):
-                return {"retriever": {"project": project.id}}
+            capabilities = ("retriever",)
+            def resolve(self, project, capability):
+                return {"project": project.id}
         self.registry.register(Search())
         self.projects.set_components(self.project, ("notes", "search"))
         self.assertEqual(self.registry.resolve(self.project, "retriever"), ({"project": self.project.id},))
@@ -264,11 +265,11 @@ class ToolDataTests(unittest.IsolatedAsyncioTestCase):
                                             [chunk("done", finish="stop")])
             engines = EngineRegistry()
             engines.register("loop", LoopEngine(completion_fn=completion))
-            manager = RunManager(tasks, engines, capabilities=registry)
             task = tasks.create(project, "Test")
+            manager = RunManager(tasks, engines, task=task, capabilities=registry)
             try:
-                await manager.submit(project, task, "request")
-                await manager.wait_idle(project, task)
+                await manager.submit("request")
+                await manager.wait_idle()
                 self.assertEqual(calls, [{"a": 2}])
                 self.assertEqual(completion.requests[0]["tools"], [definition])
                 self.assertEqual(manager.repository.list(task)[0].status, RunStatus.COMPLETED)

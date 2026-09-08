@@ -193,13 +193,15 @@ RunManager:
 
 * accepts user requests
 * durably records requests as QUEUED
-* maintains one runtime queue per Task
+* is constructed for exactly one Task and maintains its runtime queue
 * creates Runs
 * promotes queued requests to COMMITTED
 * executes Engines
 * persists Assistant streaming output
 * handles interrupt
 * recovers queued requests after restart
+* validates Engine/component registrations before admitting new requests
+* publishes Run lifecycle events after persistence, separately from EngineEvent
 
 Runs inside one Task are serial.
 
@@ -236,18 +238,9 @@ Conversation history uses append-only JSONL.
 
 Never persist runtime asyncio objects.
 
-Do not store secret values in ordinary JSON configuration.
-
-Do not write the following to logs:
-
-* API keys
-* Authorization headers
-* passwords
-* credentials
-* full environment-variable dumps
-
-Authentication uses the provider SDK environment or runtime-only Engine arguments.
-Do not add an application credential service unless explicitly requested.
+ProjectConfig and component records accept arbitrary JSON field names. There is
+no application secret store, key-name blocking or exception-message masking.
+Operational logs describe lifecycle operations; runtime handles are not persisted.
 
 ## Runtime Rules
 
@@ -314,6 +307,8 @@ open JSON definitions and storage lifecycle beneath it. Use the Component base f
 common CRUD/codecs/cloning, and ComponentData through ProjectManager for locked,
 lifecycle-checked access. Base and registry must not depend on Tool execution.
 Domain-specific runtime capability adapters live with their own components.
+Declare capability names and resolve only the requested capability. Tool data CRUD
+must not require runtime handlers; bind handlers only for execution.
 Workflow/Subagent records are data, not a new execution hierarchy; graph/subagent
 execution stays within the owning Run and uses Engine events for Steps.
 

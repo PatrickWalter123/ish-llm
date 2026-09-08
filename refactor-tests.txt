@@ -1,0 +1,808 @@
+test (unittest.loader._FailedTest) ... ERROR
+test_cleanup_failure_during_close_does_not_yield_failure_event (test_base_engine.BaseEngineTests) ... ok
+test_close_after_started_does_not_invoke_action_or_emit_terminal_event (test_base_engine.BaseEngineTests) ... ok
+test_close_after_text_closes_underlying_generator (test_base_engine.BaseEngineTests) ... ok
+test_coroutine_action_stores_private_state_without_emitting_text (test_base_engine.BaseEngineTests) ... ok
+test_generic_async_iterator_and_close_failure (test_base_engine.BaseEngineTests) ... ERROR
+test_interrupt_closes_stream_and_preserves_queued_request (test_base_engine.BaseEngineTests) ... ok
+test_invalid_output_fails_without_persisting_raw_objects (test_base_engine.BaseEngineTests) ... ok
+test_partial_failure_is_sanitized_closes_source_and_continues_queue (test_base_engine.BaseEngineTests) ... FAIL
+test_shared_engine_has_unique_steps_and_isolated_metadata_and_state (test_base_engine.BaseEngineTests) ... ERROR
+test_subclass_reuses_completion_with_automatic_step_persistence (test_base_engine.BaseEngineTests) ... ok
+test_subclass_yields_text_and_records_one_completed_step (test_base_engine.BaseEngineTests) ... ok
+test_timeout_finalizes_failed_step_and_closes_coroutine (test_base_engine.BaseEngineTests) ... ok
+test_unimplemented_operation_is_a_failed_step (test_base_engine.BaseEngineTests) ... FAIL
+test_early_close_closes_provider_and_leaves_response_unfinished (test_base_engine.CompletionHelperTests) ... ok
+test_incomplete_or_oversized_stream_does_not_publish_complete_response (test_base_engine.CompletionHelperTests) ... ok
+test_nonstreaming_or_multiple_choices_rejected_before_provider_call (test_base_engine.CompletionHelperTests) ... ok
+test_sdk_chunks_and_interleaved_tool_fragments_build_assistant_message (test_base_engine.CompletionHelperTests) ... ok
+test_simultaneous_streams_keep_results_and_request_copies_isolated (test_base_engine.CompletionHelperTests) ... ok
+test_invalid_persistent_metadata_is_rejected_before_execution (test_base_engine.StepConfigurationTests) ... ok
+test_body_errors_are_not_converted_into_timeouts (test_compat.AsyncCompatibilityTests) ... ok
+test_early_stream_close_runs_finally (test_compat.AsyncCompatibilityTests) ... ok
+test_external_cancellation_stays_cancelled_and_closes_stream (test_compat.AsyncCompatibilityTests) ... ok
+test_nested_timeout_only_expires_inner_scope (test_compat.AsyncCompatibilityTests) ... ok
+test_timeout_expires_and_task_can_continue (test_compat.AsyncCompatibilityTests) ... ok
+test_dataclass_defaults_frozen_copy_and_field_only_persistence (test_compat.CompatibilityTests) ... ERROR
+test_enum_string_formatting_and_json_remain_persisted_values (test_compat.CompatibilityTests) ... ok
+test_junction_detection_for_normal_file_directory_and_missing_path (test_compat.CompatibilityTests) ... ok
+test_public_model_type_hints_resolve_on_python39 (test_compat.CompatibilityTests) ... test_real_windows_junction_cannot_be_followed_by_permanent_delete (test_compat.CompatibilityTests) ... ok
+test_clone_copies_definitions_and_config_but_not_arbitrary_artifacts (test_components.ComponentTests) ... ok
+test_component_handle_obeys_workspace_lock_and_serializes_updates (test_components.ComponentTests) ... ok
+test_crud_open_keys_serialization_and_detached_values (test_components.ComponentTests) ... ok
+test_declaration_and_selection_own_directory_creation (test_components.ComponentTests) ... ok
+test_directory_conflicts_and_path_traversal_are_rejected (test_components.ComponentTests) ... ok
+test_generic_exports_have_no_tool_dependency (test_components.ComponentTests) ... FAIL
+test_handles_reload_selection_deletion_and_project_ownership (test_components.ComponentTests) ... ok
+test_invalid_json_and_failed_atomic_replacement_keep_original_data (test_components.ComponentTests) ... FAIL
+test_legacy_selected_workflow_can_be_read_and_cloned_without_migration (test_components.ComponentTests) ... ok
+test_legacy_workflow_directory_is_initialized_without_losing_files (test_components.ComponentTests) ... ok
+test_linked_directory_and_contents_cannot_escape_component_root (test_components.ComponentTests) ... ok
+test_permanent_component_removal_and_reenable (test_components.ComponentTests) ... ok
+test_public_type_hints_remain_resolvable (test_components.ComponentTests) ... ok
+test_invalid_tool_record_does_not_replace_valid_definition (test_components.ToolDataTests) ... Executing <Task pending name='Task-310' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0AF82EAF0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.156 seconds
+ok
+test_native_tool_definition_reaches_loop_and_uses_registered_handler (test_components.ToolDataTests) ... Executing <Task pending name='Task-313' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0AE92EAF0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.157 seconds
+ERROR
+test_clone_copies_config_but_does_not_duplicate_execution_history (test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-316' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0AF7A0CD0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.250 seconds
+ok
+test_completion_metadata_usage_only_chunks_and_no_payload_leak (test_configuration_results.ConfigurationResultTests) ... ok
+test_configuration_validation_runs_before_create_and_save (test_configuration_results.ConfigurationResultTests) ... FAIL
+test_failure_keeps_finish_reason_and_non_llm_engines_have_summary (test_configuration_results.ConfigurationResultTests) ... ok
+test_flexible_config_persists_inherits_and_runtime_options_win (test_configuration_results.ConfigurationResultTests) ... ok
+test_interrupt_preserves_observed_usage_without_claiming_final_total (test_configuration_results.ConfigurationResultTests) ... ok
+test_legacy_configuration_and_custom_fields_migrate_on_load (test_configuration_results.ConfigurationResultTests) ... ERROR
+test_old_project_summaries_are_ignored_and_do_not_resurrect_runs (test_configuration_results.ConfigurationResultTests) ... ok
+test_pipeline_aggregates_all_completion_calls_and_missing_usage_is_unknown (test_configuration_results.ConfigurationResultTests) ... ok
+test_project_and_task_queries_read_the_same_run_without_result_files (test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-578' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0AF8B0B80>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.110 seconds
+ok
+test_project_updates_reach_later_runs_without_mutating_active_snapshot (test_configuration_results.ConfigurationResultTests) ... ok
+test_recovery_finalizes_stale_observations_in_run (test_configuration_results.ConfigurationResultTests) ... ok
+test_running_results_and_injected_repository (test_configuration_results.ConfigurationResultTests) ... Executing <Task pending name='Task-698' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0AF850880>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+ok
+test_task_filter_soft_delete_and_cross_project_lookup (test_configuration_results.ConfigurationResultTests) ... ERROR
+test_cancellation_propagates_to_async_provider (test_inference.InferenceTests) ... ok
+test_concurrent_calls_keep_inputs_separate (test_inference.InferenceTests) ... ok
+test_default_dispatch_uses_installed_litellm_async_entry_points (test_inference.InferenceTests) ... ok
+test_embedding_passes_open_kwargs_and_preserves_native_response (test_inference.InferenceTests) ... ok
+test_import_does_not_load_engines_services_or_sdk (test_inference.InferenceTests) ... ok
+test_missing_model_and_native_provider_error (test_inference.InferenceTests) ... ok
+test_rerank_accepts_document_objects_and_returns_scores_and_metadata (test_inference.InferenceTests) ... ok
+test_delete_defaults_to_reversible_metadata_change (test_lifecycle_logging.LifecycleTests) ... ok
+test_failed_removal_does_not_report_success_or_mark_deleted (test_lifecycle_logging.LifecycleTests) ... ok
+test_forged_paths_and_ownership_are_rejected_without_removing_files (test_lifecycle_logging.LifecycleTests) ... ok
+test_junction_target_preflight_rejects_before_removal (test_lifecycle_logging.LifecycleTests) ... ok
+test_linked_descendant_preflight_rejects_before_removal (test_lifecycle_logging.LifecycleTests) ... ok
+test_log_rotation_and_no_duplicate_global_handlers (test_lifecycle_logging.LifecycleTests) ... ok
+test_logging_failure_does_not_fail_metadata_save (test_lifecycle_logging.LifecycleTests) ... ok
+test_logging_never_recreates_deleted_domain (test_lifecycle_logging.LifecycleTests) ... ok
+test_permanent_delete_rejects_persisted_active_run (test_lifecycle_logging.LifecycleTests) ... ok
+test_permanent_project_delete_removes_all_tasks_and_preserves_sibling (test_lifecycle_logging.LifecycleTests) ... ok
+test_permanent_requires_explicit_bool (test_lifecycle_logging.LifecycleTests) ... ok
+test_permanent_task_delete_removes_descendants_preserves_sibling_and_parent_log (test_lifecycle_logging.LifecycleTests) ... ok
+test_each_domain_records_lifecycle_without_conversation_or_metadata (test_lifecycle_logging.RuntimeLifecycleTests) ... ok
+test_failed_and_interrupted_runs_have_terminal_domain_logs (test_lifecycle_logging.RuntimeLifecycleTests) ... ok
+test_queued_and_idle_attached_tasks_cannot_be_deleted_or_cloned (test_lifecycle_logging.RuntimeLifecycleTests) ... ok
+test_recovery_failure_releases_runtime_attachment (test_lifecycle_logging.RuntimeLifecycleTests) ... ok
+test_second_manager_cannot_recover_an_attached_task (test_lifecycle_logging.RuntimeLifecycleTests) ... ok
+test_existing_lock_file_does_not_imply_ownership (test_locking_io.LockTests) ... ok
+test_nested_ownership_releases_on_exception_and_keeps_lock_file (test_locking_io.LockTests) ... ok
+test_real_process_crash_releases_os_lock_without_deleting_file (test_locking_io.LockTests) ... ok
+test_another_store_append_is_incrementally_visible (test_locking_io.ProjectionTests) ... ok
+test_corrupt_complete_event_repeatedly_raises (test_locking_io.ProjectionTests) ... ok
+test_fsync_failure_does_not_acknowledge_or_cache_unwritten_delta (test_locking_io.ProjectionTests) ... ok
+test_replacement_truncation_and_incomplete_tail_invalidate_cache (test_locking_io.ProjectionTests) ... ok
+test_streaming_decodes_only_new_events_and_returns_isolated_snapshots (test_locking_io.ProjectionTests) ... ok
+test_cancelled_submission_is_persisted_and_scheduled_once (test_locking_io.RuntimeIOTests) ... ok
+test_concurrent_submissions_are_serial_and_preserve_all_inputs (test_locking_io.RuntimeIOTests) ... ok
+test_interrupt_waits_for_delta_and_shutdown_keeps_ownership_until_drain (test_locking_io.RuntimeIOTests) ... ok
+test_other_process_cannot_recover_or_mutate_attached_workspace (test_locking_io.RuntimeIOTests) ... ok
+test_shared_repository_cannot_attach_same_task_through_other_task_manager (test_locking_io.RuntimeIOTests) ... ok
+test_slow_storage_keeps_loop_responsive_and_cancellation_drains_write (test_locking_io.RuntimeIOTests) ... ok
+test_invalid_limits (test_loop.ConfigurationTests) ... ok
+test_schema_and_nonfinite_arguments_rejected (test_loop.ConfigurationTests) ... ok
+test_cancel_during_completion_creation_closes_late_stream (test_loop.LoopTests) ... ok
+test_completion_snapshot_is_fresh_per_iteration_and_factories_run_once (test_loop.LoopTests) ... ok
+test_duplicate_call_id_is_not_executed_twice (test_loop.LoopTests) ... ok
+test_explicit_model_works_without_project_model (test_loop.LoopTests) ... ok
+test_fragmented_tool_calls_execute_and_feed_next_iteration (test_loop.LoopTests) ... ok
+test_free_completion_kwargs_override_defaults_without_persistence (test_loop.LoopTests) ... Executing <Task pending name='Task-1319' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7013CD0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+ok
+test_interrupt_during_blocked_read_preserves_queue_and_drops_late_delta (test_loop.LoopTests) ... ok
+test_invalid_batch_does_not_execute_even_first_valid_tool (test_loop.LoopTests) ... ok
+test_loop_limit_prevents_unconsumable_tool_side_effects (test_loop.LoopTests) ... ok
+test_multiple_tool_calls_are_ordered_by_index (test_loop.LoopTests) ... ok
+test_no_finish_reason_fails_instead_of_returning_partial_success (test_loop.LoopTests) ... ok
+test_object_chunks_empty_content_and_usage_are_supported (test_loop.LoopTests) ... Executing <Task pending name='Task-1509' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B6FF1A90>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.469 seconds
+ok
+test_provider_failure_is_sanitized_and_queue_continues (test_loop.LoopTests) ... Executing <Task pending name='Task-1540' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7085160>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.110 seconds
+FAIL
+test_real_litellm_sdk_with_mock_http_sse_and_tool_loop (test_loop.LoopTests) ... Executing <Task pending name='Task-1581' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001B0B709E280>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content=None, rol...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content='The resu...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+ok
+test_real_time_deltas_and_request_configuration (test_loop.LoopTests) ... ok
+test_request_timeout_stops_delivery (test_loop.LoopTests) ... ok
+test_reserved_completion_contract_is_rejected_before_provider_call (test_loop.LoopTests) ... ok
+test_sdk_environment_authentication_is_left_to_provider (test_loop.LoopTests) ... ok
+test_token_limit_retains_last_delta_and_fails (test_loop.LoopTests) ... ok
+test_tool_cancellation_keeps_worker_alive (test_loop.LoopTests) ... ok
+test_tool_choice_option_is_preserved_for_registered_tools (test_loop.LoopTests) ... ok
+test_tool_failure_is_not_retried_or_leaked (test_loop.LoopTests) ... FAIL
+test_tool_timeout_fails_without_next_llm_call (test_loop.LoopTests) ... ok
+test_two_tasks_stream_concurrently_on_separate_threads (test_loop.LoopTests) ... ERROR
+test_unknown_tool_cannot_execute (test_loop.LoopTests) ... ok
+test_bounded_buffer_and_consumer_close (test_loop.StreamBridgeTests) ... ok
+test_active_task_lifecycle_changes_rejected_using_persisted_state (test_persistence.PersistenceTests) ... ok
+test_clone_copies_configuration_and_history_without_replaying_queue (test_persistence.PersistenceTests) ... ok
+test_conversation_replays_all_event_types_and_appends_deltas (test_persistence.PersistenceTests) ... ok
+test_corrupt_complete_event_is_not_silently_discarded (test_persistence.PersistenceTests) ... ok
+test_domain_and_config_round_trip (test_persistence.PersistenceTests) ... FAIL
+test_ids_cannot_escape_owned_roots (test_persistence.PersistenceTests) ... ok
+test_incomplete_tail_survives_read_and_is_repaired_before_append (test_persistence.PersistenceTests) ... ok
+test_invalid_metadata_does_not_replace_valid_json (test_persistence.PersistenceTests) ... ok
+test_soft_delete_restore_preserves_history (test_persistence.PersistenceTests) ... ok
+test_step_events_and_recovery (test_persistence.PersistenceTests) ... ok
+test_invalid_pipeline_and_preparation_configuration (test_pipeline.PipelineConfigurationTests) ... ok
+test_failed_event_and_unfinished_stage_stop_following_stages (test_pipeline.PipelineTests) ... Executing <Task pending name='Task-2091' coro=<to_thread() running at D:\Program Files\Python39\lib\asyncio\threads.py:25> wait_for=<Future pending cb=[_chain_future.<locals>._call_check_cancel() at D:\Program Files\Python39\lib\asyncio\futures.py:384, <TaskWakeupMethWrapper object at 0x000001B0AF767F70>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> cb=[shield.<locals>._inner_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:890] created at D:\WorkSpace\ish\ish\services\storage.py:125> took 0.109 seconds
+ok
+test_interrupt_preparation_closes_action_and_only_next_request_runs_loop (test_pipeline.PipelineTests) ... ok
+test_nested_pipelines_compose_with_generic_async_iterators (test_pipeline.PipelineTests) ... ok
+test_preparation_failure_stops_loop_and_preserves_next_request (test_pipeline.PipelineTests) ... Executing <Task pending name='Task-2166' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7EE96A0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.109 seconds
+FAIL
+test_preparations_feed_loop_factories_and_have_persistent_steps (test_pipeline.PipelineTests) ... ok
+test_shared_pipeline_has_isolated_state_for_concurrent_tasks_and_later_runs (test_pipeline.PipelineTests) ... ERROR
+test_timeout_stops_preparation_and_closes_action (test_pipeline.PipelineTests) ... ok
+test_all_metadata_repositories_round_trip_without_runtime_paths (test_repositories.RepositoryTests) ... ok
+test_repositories_reject_wrong_id_or_parent (test_repositories.RepositoryTests) ... ok
+test_run_manager_repository_injection_and_legacy_alias (test_repositories.RepositoryTests) ... ok
+test_step_manager_lifecycle_uses_injected_repository_without_json (test_repositories.RepositoryTests) ... ok
+test_step_repository_validates_paths_and_duplicate_identity (test_repositories.RepositoryTests) ... ok
+test_task_manager_lifecycle_uses_injected_repository_without_json (test_repositories.RepositoryTests) ... ok
+test_task_repository_lists_filters_and_reloads (test_repositories.RepositoryTests) ... ok
+test_burst_queue_context_pairs_answers_with_prior_inputs (test_runtime.RuntimeTests) ... ok
+test_cancel_before_engine_first_instruction_finalizes_run (test_runtime.RuntimeTests) ... ok
+test_cloned_burst_history_preserves_turn_order (test_runtime.RuntimeTests) ... Executing <Task pending name='Task-2356' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001B0B7036D60>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.172 seconds
+ok
+test_crash_between_run_creation_and_commit_does_not_replay_claimed_input (test_runtime.RuntimeTests) ... ok
+test_deleted_task_and_wrong_project_are_rejected (test_runtime.RuntimeTests) ... FAIL
+test_empty_response_and_failure_before_first_delta (test_runtime.RuntimeTests) ... ok
+test_engine_failure_preserves_partial_text_and_processes_next_request (test_runtime.RuntimeTests) ... ok
+test_engine_overrides_are_durable (test_runtime.RuntimeTests) ... ok
+test_engine_receives_snapshot_not_mutable_service_state (test_runtime.RuntimeTests) ... ok
+test_independent_tasks_really_run_concurrently (test_runtime.RuntimeTests) ... ERROR
+test_interrupt_preserves_queue_and_worker_continues (test_runtime.RuntimeTests) ... ok
+test_plain_async_iterator_engine_is_supported (test_runtime.RuntimeTests) ... ok
+test_provider_error_text_and_objects_are_not_persisted (test_runtime.RuntimeTests) ... FAIL
+test_real_process_restart_preserves_partial_output_and_queued_input (test_runtime.RuntimeTests) ... ok
+test_recovery_interrupts_stale_runs_steps_and_orphan_streams (test_runtime.RuntimeTests) ... Executing <Task pending name='Task-2747' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001B0B70AA6D0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.360 seconds
+Executing <Task pending name='Task-2747' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B70325E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.157 seconds
+ok
+test_shutdown_before_worker_starts_keeps_all_requests_queued (test_runtime.RuntimeTests) ... ok
+test_shutdown_preserves_queue_for_new_manager (test_runtime.RuntimeTests) ... Executing <Task pending name='Task-2807' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7E65280>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.109 seconds
+ok
+test_single_request_is_durable_before_execution (test_runtime.RuntimeTests) ... Executing <Task pending name='Task-2852' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7E873D0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+ok
+test_streaming_and_second_input_remains_queued (test_runtime.RuntimeTests) ... ok
+test_unfinished_step_fails_run_and_closes_generator (test_runtime.RuntimeTests) ... ok
+test_unknown_engine_fails_one_run_without_dropping_queue (test_runtime.RuntimeTests) ... ERROR
+test_wait_idle_during_shutdown_does_not_hang_on_preserved_queue (test_runtime.RuntimeTests) ... ok
+test_capabilities_are_fixed_for_one_run_and_refreshed_for_next (test_service_boundaries.BoundaryTests) ... ok
+test_clone_uses_current_project_state_and_delegates_component_configuration (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3008' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7EC1160>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.609 seconds
+ok
+test_component_owns_custom_layout_and_failed_initialization_can_be_restored (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3011' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7EDA5E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.172 seconds
+ok
+test_component_selection_changes_preserve_data_and_initialization_is_idempotent (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3014' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B70AAA00>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.188 seconds
+ok
+test_components_create_only_selected_directories_and_survive_reload (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3017' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7EC1910>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.141 seconds
+ok
+test_deleted_project_stale_handles_cannot_mutate_or_execute (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3020' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001B0B7EDAE50>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.156 seconds
+ok
+test_deleted_task_stale_save_and_restore_under_deleted_parent_are_rejected (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3028' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7EC99D0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.282 seconds
+ok
+test_factory_and_context_builder_are_shared_by_runtime_and_clone (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3031' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001B0B7ECFA00>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.110 seconds
+Executing <Task pending name='Task-3031' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001B0B7E84580>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.187 seconds
+ok
+test_failed_component_addition_does_not_publish_selection (test_service_boundaries.BoundaryTests) ... ok
+test_forged_handle_paths_rejected_before_mutation (test_service_boundaries.BoundaryTests) ... FAIL
+test_idle_attached_task_cannot_be_overwritten_by_public_save (test_service_boundaries.BoundaryTests) ... ok
+test_missing_component_registration_fails_before_provider_execution (test_service_boundaries.BoundaryTests) ... ERROR
+test_new_runs_use_saved_project_configuration_instead_of_stale_handle (test_service_boundaries.BoundaryTests) ... ok
+test_observer_errors_do_not_fail_execution_or_drop_queued_requests (test_service_boundaries.BoundaryTests) ... ok
+test_old_metadata_defaults_to_no_components_without_scanning_directories (test_service_boundaries.BoundaryTests) ... ok
+test_permanent_deletion_cannot_be_reversed_by_stale_save (test_service_boundaries.BoundaryTests) ... ok
+test_save_cannot_change_managed_lifecycle_state (test_service_boundaries.BoundaryTests) ... ok
+test_two_projects_share_loop_engine_but_not_enabled_tools (test_service_boundaries.BoundaryTests) ... Executing <Task pending name='Task-3166' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001B0B7EF6880>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.250 seconds
+FAIL
+test_unknown_duplicate_or_malformed_selection_creates_nothing (test_service_boundaries.BoundaryTests) ... ok
+test_unselected_or_invalid_tool_configuration_is_rejected (test_service_boundaries.BoundaryTests) ... FAIL
+
+======================================================================
+ERROR: test (unittest.loader._FailedTest)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\loader.py", line 436, in _find_test_path
+    module = self._get_module_from_name(name)
+  File "D:\Program Files\Python39\lib\unittest\loader.py", line 377, in _get_module_from_name
+    __import__(name)
+  File "D:\WorkSpace\ish\tests\test.py", line 32, in <module>
+    run_manager = RunManager(
+TypeError: __init__() missing 1 required keyword-only argument: 'task'
+
+
+======================================================================
+ERROR: test_generic_async_iterator_and_close_failure (test_base_engine.BaseEngineTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_base_engine.py", line 239, in test_generic_async_iterator_and_close_failure
+    async for event in BaseEngine(action=lambda context: BadClose()).execute(self.context()):
+  File "D:\WorkSpace\ish\ish\engines\base.py", line 349, in execute
+    await close()
+  File "D:\WorkSpace\ish\tests\test_base_engine.py", line 236, in aclose
+    raise ValueError("private-close-error")
+ValueError: private-close-error
+
+======================================================================
+ERROR: test_shared_engine_has_unique_steps_and_isolated_metadata_and_state (test_base_engine.BaseEngineTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\asyncio\locks.py", line 226, in wait
+    await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\asyncio\tasks.py", line 490, in wait_for
+    return fut.result()
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_base_engine.py", line 170, in test_shared_engine_has_unique_steps_and_isolated_metadata_and_state
+    await asyncio.wait_for(entered.wait(), 5)
+  File "D:\Program Files\Python39\lib\asyncio\tasks.py", line 492, in wait_for
+    raise exceptions.TimeoutError() from exc
+asyncio.exceptions.TimeoutError
+
+======================================================================
+ERROR: test_dataclass_defaults_frozen_copy_and_field_only_persistence (test_compat.CompatibilityTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\dataclasses.py", line 1033, in fields
+    fields = getattr(class_or_instance, _FIELDS)
+  File "D:\WorkSpace\ish\ish\core\models.py", line 92, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: __dataclass_fields__
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_compat.py", line 62, in test_dataclass_defaults_frozen_copy_and_field_only_persistence
+    self.assertNotIn("runtime_only", record(config))
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 54, in record
+    return {item.name: getattr(model, item.name) for item in fields(model)
+  File "D:\Program Files\Python39\lib\dataclasses.py", line 1035, in fields
+    raise TypeError('must be called with a dataclass type or instance')
+TypeError: must be called with a dataclass type or instance
+
+======================================================================
+ERROR: test_public_model_type_hints_resolve_on_python39 (test_compat.CompatibilityTests) (model='ProjectConfig')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\dataclasses.py", line 1033, in fields
+    fields = getattr(class_or_instance, _FIELDS)
+AttributeError: type object 'ProjectConfig' has no attribute '__dataclass_fields__'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_compat.py", line 44, in test_public_model_type_hints_resolve_on_python39
+    self.assertTrue({field.name for field in fields(model)} <= hints.keys())
+  File "D:\Program Files\Python39\lib\dataclasses.py", line 1035, in fields
+    raise TypeError('must be called with a dataclass type or instance')
+TypeError: must be called with a dataclass type or instance
+
+======================================================================
+ERROR: test_native_tool_definition_reaches_loop_and_uses_registered_handler (test_components.ToolDataTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_components.py", line 267, in test_native_tool_definition_reaches_loop_and_uses_registered_handler
+    manager = RunManager(tasks, engines, task=task, capabilities=registry)
+UnboundLocalError: local variable 'task' referenced before assignment
+
+======================================================================
+ERROR: test_legacy_configuration_and_custom_fields_migrate_on_load (test_configuration_results.ConfigurationResultTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_configuration_results.py", line 267, in test_legacy_configuration_and_custom_fields_migrate_on_load
+    self.assertEqual(migrated.config.data["custom"], {"mode": "personal"})
+KeyError: 'custom'
+
+======================================================================
+ERROR: test_task_filter_soft_delete_and_cross_project_lookup (test_configuration_results.ConfigurationResultTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_configuration_results.py", line 220, in test_task_filter_soft_delete_and_cross_project_lookup
+    second = await self.submit("fake", task=second_task)
+  File "D:\WorkSpace\ish\tests\test_configuration_results.py", line 39, in submit
+    return self.manager.runs.list(task)[-1]
+IndexError: list index out of range
+
+======================================================================
+ERROR: test_two_tasks_stream_concurrently_on_separate_threads (test_loop.LoopTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_loop.py", line 99, in until
+    await asyncio.sleep(0.005)
+  File "D:\Program Files\Python39\lib\asyncio\tasks.py", line 652, in sleep
+    return await future
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_loop.py", line 484, in test_two_tasks_stream_concurrently_on_separate_threads
+    await self.until(lambda: len(entered) == 2)
+  File "D:\WorkSpace\ish\tests\test_loop.py", line 99, in until
+    await asyncio.sleep(0.005)
+  File "D:\WorkSpace\ish\.venv39\lib\site-packages\async_timeout\__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "D:\WorkSpace\ish\.venv39\lib\site-packages\async_timeout\__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+
+======================================================================
+ERROR: test_shared_pipeline_has_isolated_state_for_concurrent_tasks_and_later_runs (test_pipeline.PipelineTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\asyncio\locks.py", line 226, in wait
+    await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\asyncio\tasks.py", line 490, in wait_for
+    return fut.result()
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_pipeline.py", line 140, in test_shared_pipeline_has_isolated_state_for_concurrent_tasks_and_later_runs
+    await asyncio.wait_for(entered.wait(), 5)
+  File "D:\Program Files\Python39\lib\asyncio\tasks.py", line 492, in wait_for
+    raise exceptions.TimeoutError() from exc
+asyncio.exceptions.TimeoutError
+
+======================================================================
+ERROR: test_independent_tasks_really_run_concurrently (test_runtime.RuntimeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_runtime.py", line 48, in until
+    await asyncio.sleep(0.001)
+  File "D:\Program Files\Python39\lib\asyncio\tasks.py", line 652, in sleep
+    return await future
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_runtime.py", line 140, in test_independent_tasks_really_run_concurrently
+    await self.until(lambda: self.engine.active == 2)
+  File "D:\WorkSpace\ish\tests\test_runtime.py", line 48, in until
+    await asyncio.sleep(0.001)
+  File "D:\WorkSpace\ish\.venv39\lib\site-packages\async_timeout\__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "D:\WorkSpace\ish\.venv39\lib\site-packages\async_timeout\__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+
+======================================================================
+ERROR: test_unknown_engine_fails_one_run_without_dropping_queue (test_runtime.RuntimeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_runtime.py", line 164, in test_unknown_engine_fails_one_run_without_dropping_queue
+    async def test_unknown_engine_fails_one_run_without_dropping_queue(self) -> None:
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 243, in submit
+    return await drain_on_cancel(self._submit(content, engine))
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 145, in drain_on_cancel
+    await asyncio.shield(pending)
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 250, in _submit
+    selected = await self._io.run(self._validate_request, engine)
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 129, in run
+    await asyncio.shield(pending)
+  File "D:\Program Files\Python39\lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "D:\Program Files\Python39\lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 123, in work
+    return operation(*args, **kwargs)
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 186, in _validate_request
+    raise RunRequestError(RunErrorCode.ENGINE_NOT_REGISTERED, "Requested Engine is not registered")
+ish.services.runs.RunRequestError: Requested Engine is not registered
+
+======================================================================
+ERROR: test_missing_component_registration_fails_before_provider_execution (test_service_boundaries.BoundaryTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 189, in _validate_request
+    self.capabilities.components.validate(project.components)
+  File "D:\WorkSpace\ish\ish\components\registry.py", line 37, in validate
+    raise ValueError("Duplicate or unavailable Project component")
+ValueError: Duplicate or unavailable Project component
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_service_boundaries.py", line 250, in test_missing_component_registration_fails_before_provider_execution
+    with self.assertRaises(ValueError):
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 243, in submit
+    return await drain_on_cancel(self._submit(content, engine))
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 145, in drain_on_cancel
+    await asyncio.shield(pending)
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 250, in _submit
+    selected = await self._io.run(self._validate_request, engine)
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 129, in run
+    await asyncio.shield(pending)
+  File "D:\Program Files\Python39\lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+  File "D:\Program Files\Python39\lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "D:\WorkSpace\ish\ish\services\storage.py", line 123, in work
+    return operation(*args, **kwargs)
+  File "D:\WorkSpace\ish\ish\services\runs.py", line 191, in _validate_request
+    raise RunRequestError(RunErrorCode.COMPONENT_NOT_REGISTERED, str(error)) from error
+ish.services.runs.RunRequestError: Duplicate or unavailable Project component
+
+======================================================================
+FAIL: test_partial_failure_is_sanitized_closes_source_and_continues_queue (test_base_engine.BaseEngineTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_base_engine.py", line 109, in test_partial_failure_is_sanitized_closes_source_and_continues_queue
+    self.assertEqual(self.manager.steps.list(first)[0].error, "Step execution failed")
+AssertionError: 'private-sdk-error' != 'Step execution failed'
+- private-sdk-error
++ Step execution failed
+
+
+======================================================================
+FAIL: test_unimplemented_operation_is_a_failed_step (test_base_engine.BaseEngineTests)
+----------------------------------------------------------------------
+NotImplementedError: Implement run(context) or provide action=
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_base_engine.py", line 266, in test_unimplemented_operation_is_a_failed_step
+    events.append(event)
+AssertionError: "Step execution failed" does not match "Implement run(context) or provide action="
+
+======================================================================
+FAIL: test_generic_exports_have_no_tool_dependency (test_components.ComponentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_components.py", line 192, in test_generic_exports_have_no_tool_dependency
+    self.assertEqual(self.registry.resolve(self.project, "retriever"), ({"project": self.project.id},))
+AssertionError: Tuples differ: () != ({'project': '5ad3313451814a75a0feb6df519ba6db'},)
+
+Second tuple contains 1 additional elements.
+First extra element 0:
+{'project': '5ad3313451814a75a0feb6df519ba6db'}
+
+- ()
++ ({'project': '5ad3313451814a75a0feb6df519ba6db'},)
+
+======================================================================
+FAIL: test_invalid_json_and_failed_atomic_replacement_keep_original_data (test_components.ComponentTests) (value=<class 'dict'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_components.py", line 92, in test_invalid_json_and_failed_atomic_replacement_keep_original_data
+    self.data.save(identifier, value)
+AssertionError: (<class 'TypeError'>, <class 'ValueError'>) not raised
+
+======================================================================
+FAIL: test_invalid_json_and_failed_atomic_replacement_keep_original_data (test_components.ComponentTests) (value=<class 'list'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_components.py", line 93, in test_invalid_json_and_failed_atomic_replacement_keep_original_data
+    self.assertEqual(self.data.load(identifier), {"kept": True})
+AssertionError: {'password': 'secret'} != {'kept': True}
+- {'password': 'secret'}
++ {'kept': True}
+
+======================================================================
+FAIL: test_invalid_json_and_failed_atomic_replacement_keep_original_data (test_components.ComponentTests) (value=<class 'dict'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_components.py", line 93, in test_invalid_json_and_failed_atomic_replacement_keep_original_data
+    self.assertEqual(self.data.load(identifier), {"kept": True})
+AssertionError: {'password': 'secret'} != {'kept': True}
+- {'password': 'secret'}
++ {'kept': True}
+
+======================================================================
+FAIL: test_invalid_json_and_failed_atomic_replacement_keep_original_data (test_components.ComponentTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_components.py", line 97, in test_invalid_json_and_failed_atomic_replacement_keep_original_data
+    self.assertEqual(self.data.load(identifier), {"kept": True})
+AssertionError: {'password': 'secret'} != {'kept': True}
+- {'password': 'secret'}
++ {'kept': True}
+
+======================================================================
+FAIL: test_configuration_validation_runs_before_create_and_save (test_configuration_results.ConfigurationResultTests) (data={'nested': {'api_key': 'do-not-save'}})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_configuration_results.py", line 275, in test_configuration_validation_runs_before_create_and_save
+    ProjectConfig(data=data)
+AssertionError: (<class 'TypeError'>, <class 'ValueError'>) not raised
+
+======================================================================
+FAIL: test_configuration_validation_runs_before_create_and_save (test_configuration_results.ConfigurationResultTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_configuration_results.py", line 278, in test_configuration_validation_runs_before_create_and_save
+    self.projects.save(self.project)
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_provider_failure_is_sanitized_and_queue_continues (test_loop.LoopTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_loop.py", line 324, in test_provider_failure_is_sanitized_and_queue_continues
+    self.assertNotIn("private-key", path.read_text(encoding="utf-8"))
+AssertionError: 'private-key' unexpectedly found in '{"id": "d1325495a18842968ad2d1dc6b0d4fe2", "task_id": "5342457e911f4c52ab3f7624e011b5ca", "input_message_id": "65407fff671d46aea48cf7e5797e306a", "assistant_message_id": "df1ec64f94b04f77b20a8633b3192cd6", "engine": "loop", "status": "failed", "created_at": "2026-09-08T21:15:20.903002+00:00", "started_at": "2026-09-08T21:15:20.995096+00:00", "ended_at": "2026-09-08T21:15:21.354984+00:00", "error": "Authorization: private-key", "metadata": {"completions": [{"id": "165f80728f0049e89aff123436814f1c", "step_id": "ec09136e6dfa4792b7a16fd5a6ae8ed0", "model": "openai/test-model", "response_id": null, "finish_reason": null, "status": "failed", "started_at": "2026-09-08T21:15:21.183351+00:00", "ended_at": "2026-09-08T21:15:21.262835+00:00", "duration_seconds": 0.07799999999997453, "usage": {}, "usage_complete": false}]}, "error_code": "engine_failed"}'
+
+======================================================================
+FAIL: test_tool_failure_is_not_retried_or_leaked (test_loop.LoopTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_loop.py", line 339, in test_tool_failure_is_not_retried_or_leaked
+    self.assertNotIn("secret-tool-password", path.read_text(encoding="utf-8"))
+AssertionError: 'secret-tool-password' unexpectedly found in '{"id": "4c73e33631a745499287ebac2d208b60", "task_id": "dbfd0bf08cdb418da3c3878ea39b1529", "input_message_id": "93f660c509cc446583c698457e533296", "assistant_message_id": "699499cd3da2440e970e8f39407944cf", "engine": "loop", "status": "failed", "created_at": "2026-09-08T21:15:33.527936+00:00", "started_at": "2026-09-08T21:15:33.608966+00:00", "ended_at": "2026-09-08T21:15:33.968884+00:00", "error": "secret-tool-password", "metadata": {"completions": [{"id": "22af44973ccd4dc5aa7d443c205fbdd0", "step_id": "4cb282bcc3364199ba707488c326d99c", "model": "openai/test-model", "response_id": null, "finish_reason": "tool_calls", "status": "completed", "started_at": "2026-09-08T21:15:33.710802+00:00", "ended_at": "2026-09-08T21:15:33.756330+00:00", "duration_seconds": 0.04699999999979809, "usage": {}, "usage_complete": false}]}, "error_code": "engine_failed"}'
+
+======================================================================
+FAIL: test_domain_and_config_round_trip (test_persistence.PersistenceTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\WorkSpace\ish\tests\test_persistence.py", line 42, in test_domain_and_config_round_trip
+AssertionError: TypeError not raised
+
+======================================================================
+FAIL: test_preparation_failure_stops_loop_and_preserves_next_request (test_pipeline.PipelineTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_pipeline.py", line 80, in test_preparation_failure_stops_loop_and_preserves_next_request
+    self.assertNotIn("private-preparation-error", path.read_text(encoding="utf-8"))
+AssertionError: 'private-preparation-error' unexpectedly found in '{"id": "b62fac4f283c45898ac1e9b3b152b7d6", "run_id": "214135403e5e48f7881de80fa89aaab7", "kind": "preparation", "name": "Prepare", "status": "failed", "created_at": "2026-09-08T21:15:53.905981+00:00", "started_at": "2026-09-08T21:15:53.929557+00:00", "ended_at": "2026-09-08T21:15:54.005567+00:00", "error": "private-preparation-error", "metadata": {}}'
+
+======================================================================
+FAIL: test_deleted_task_and_wrong_project_are_rejected (test_runtime.RuntimeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_runtime.py", line 356, in test_deleted_task_and_wrong_project_are_rejected
+    await self.manager.submit("rejected")
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_provider_error_text_and_objects_are_not_persisted (test_runtime.RuntimeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_runtime.py", line 311, in test_provider_error_text_and_objects_are_not_persisted
+    self.assertNotIn("private-provider-token", path.read_text(encoding="utf-8"))
+AssertionError: 'private-provider-token' unexpectedly found in '{"id": "63f8881bd5714eda992dd1a4b981929b", "task_id": "4e71b05803844c788265fbe61a5e3767", "input_message_id": "18cd9fb1887549f7b5a3a56ce1192228", "assistant_message_id": "3b6709b1ab5f4b5198bc96304b52a7c8", "engine": "provider-error", "status": "failed", "created_at": "2026-09-08T21:16:26.002986+00:00", "started_at": "2026-09-08T21:16:26.080054+00:00", "ended_at": "2026-09-08T21:16:26.209286+00:00", "error": "Authorization: Bearer private-provider-token", "metadata": {}, "error_code": "engine_failed"}'
+
+======================================================================
+FAIL: test_forged_handle_paths_rejected_before_mutation (test_service_boundaries.BoundaryTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_service_boundaries.py", line 131, in test_forged_handle_paths_rejected_before_mutation
+    await self.manager(task=forged_task).submit("invalid")
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_two_projects_share_loop_engine_but_not_enabled_tools (test_service_boundaries.BoundaryTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_service_boundaries.py", line 276, in test_two_projects_share_loop_engine_but_not_enabled_tools
+    await asyncio.gather(manager.wait_idle(), other_manager.wait_idle())
+AssertionError: Lists differ: [{}, {}] != [{}]
+
+First list contains 1 additional elements.
+First extra element 1:
+{}
+
+- [{}, {}]
++ [{}]
+
+======================================================================
+FAIL: test_unselected_or_invalid_tool_configuration_is_rejected (test_service_boundaries.BoundaryTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_service_boundaries.py", line 190, in test_unselected_or_invalid_tool_configuration_is_rejected
+    self.projects.configure_component(self.project, "tools", config)
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 192 tests in 150.623s
+
+FAILED (failures=18, errors=13)

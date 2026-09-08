@@ -136,10 +136,10 @@ class RepositoryTests(unittest.TestCase):
             self.task_repository.paths(self.project, "../outside")
 
     def test_run_manager_repository_injection_and_legacy_alias(self) -> None:
-        manager = RunManager(self.tasks, EngineRegistry(), repository=self.runs)
+        manager = RunManager(self.tasks, EngineRegistry(), task=self.task, repository=self.runs)
         self.assertIs(manager.repository, self.runs)
         self.assertIs(manager.runs, self.runs)
-        legacy = RunManager(self.tasks, EngineRegistry(), runs=self.runs)
+        legacy = RunManager(self.tasks, EngineRegistry(), task=self.task, runs=self.runs)
         self.assertIs(legacy.repository, self.runs)
         with self.assertRaises(ValueError):
-            RunManager(self.tasks, EngineRegistry(), repository=self.runs, runs=self.runs)
+            RunManager(self.tasks, EngineRegistry(), task=self.task, repository=self.runs, runs=self.runs)

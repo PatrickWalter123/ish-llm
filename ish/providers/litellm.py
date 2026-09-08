@@ -9,7 +9,7 @@ from typing import Any
 
 
 class StreamError(RuntimeError):
-    """A sanitized provider/transport failure; no provider exception payload."""
+    """A provider/transport failure crossing the synchronous stream bridge."""
 
 
 def completion(**kwargs: Any) -> Iterator[Any]:
@@ -55,7 +55,7 @@ async def stream_completion(
 
     def produce() -> None:
         stream = None
-        failed = False
+        failure = None
         try:
             if stopped.is_set():
                 return
@@ -68,8 +68,8 @@ async def stream_completion(
                     break
                 if not send("chunk", chunk):
                     break
-        except Exception:
-            failed = True
+        except Exception as error:
+            failure = error
         finally:
             # Cleanup is never performed concurrently with next(stream).
             if stream is not None:
@@ -79,10 +79,11 @@ async def stream_completion(
                         result = close()
                         if inspect.isawaitable(result):
                             asyncio.run(result)
-                except Exception:
-                    failed = True
+                except Exception as error:
+                    if failure is None:
+                        failure = error
             if not stopped.is_set():
-                send("error" if failed else "end")
+                send("error" if failure is not None else "end", failure)
 
     threading.Thread(target=produce, name="ish-litellm-stream", daemon=True).start()
     try:
@@ -91,7 +92,7 @@ async def stream_completion(
             if kind == "end":
                 return
             if kind == "error":
-                raise StreamError("LLM stream failed")
+                raise StreamError(str(value)) from value
             yield value
     finally:
         stopped.set()

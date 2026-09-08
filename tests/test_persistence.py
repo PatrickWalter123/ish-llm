@@ -38,10 +38,7 @@ class PersistenceTests(unittest.TestCase):
             names = {item.name for item in fields(model)}
             self.assertTrue(names.isdisjoint({"queue", "worker", "execution", "lock"}))
             self.assertEqual("__slots__" in model.__dict__, sys.version_info >= (3, 10))
-        with self.assertRaises(TypeError):
-            ProjectConfig(api_key="must-not-be-persisted")
-        config = read_json(self.project.paths.root / "project.json")["config"]
-        self.assertNotIn("api_key", config)
+        self.assertEqual(ProjectConfig(custom_option=True)["custom_option"], True)
 
     def test_conversation_replays_all_event_types_and_appends_deltas(self) -> None:
         user = self.store.create(MessageRole.USER, "안녕하세요", MessageStatus.QUEUED)

@@ -75,7 +75,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.events = []
         self.observer_errors = []
         self.addCleanup(lambda: self.assertEqual(self.observer_errors, []))
-        self.manager = RunManager(self.tasks, self.registry, on_event=self.observe, capabilities=self.components)
+        self.manager = RunManager(self.tasks, self.registry, task=self.task, on_event=self.observe, capabilities=self.components)
         self.addAsyncCleanup(self.manager.shutdown)
         self.tool_arguments = []
         async def add(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -112,8 +112,8 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         return engine
 
     async def submit(self, text: str = "request") -> None:
-        await self.manager.submit(self.project, self.task, text)
-        await asyncio.wait_for(self.manager.wait_idle(self.project, self.task), timeout=15)
+        await self.manager.submit(text)
+        await asyncio.wait_for(self.manager.wait_idle(), timeout=15)
 
     def run_status(self) -> RunStatus:
         return self.manager.runs.list(self.task)[-1].status
@@ -141,12 +141,12 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.projects.save(self.project)
         self.engine(completion_fn, completion_kwargs={"max_tokens": 100, "api_key": "secret-test-value"})
         with patch.dict(os.environ, {"ISH_TEST_API_KEY": "secret-test-value"}):
-            await self.manager.submit(self.project, self.task, "question")
+            await self.manager.submit("question")
             await self.until(lambda: any(event.type == EngineEventType.TEXT_DELTA for event in self.events))
             self.assertEqual(self.output(), "첫")
             self.assertEqual(self.run_status(), RunStatus.RUNNING)
             self.assertNotEqual(thread_ids[0], threading.get_ident())
-            queued = await self.manager.submit(self.project, self.task, "later", engine="fake")
+            queued = await self.manager.submit("later", engine="fake")
             self.assertEqual(self.store.get(queued.id).status, MessageStatus.QUEUED)
             self.assertEqual(requests[0]["messages"], [{"role": "user", "content": "question"}])
             self.assertTrue(requests[0]["stream"])
@@ -157,7 +157,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(requests[0]["max_tokens"], 100)
             self.assertNotIn("temperature", requests[0])
             release.set()
-            await self.manager.wait_idle(self.project, self.task)
+            await self.manager.wait_idle()
         self.assertTrue(closed.is_set())
         first = self.manager.runs.list(self.task)[0]
         self.assertEqual(self.store.get(first.assistant_message_id).content, "첫 답변")
@@ -309,23 +309,22 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.run_status(), RunStatus.FAILED)
         self.assertEqual(len(self.tool_arguments), 1)
 
-    async def test_provider_failure_is_sanitized_and_queue_continues(self) -> None:
+    async def test_provider_failure_reports_diagnostics_and_queue_continues(self) -> None:
         completion_fn = ScriptedCompletion([chunk("partial"), RuntimeError("Authorization: private-key")])
         self.engine(completion_fn)
-        await self.manager.submit(self.project, self.task, "fail")
-        await self.manager.submit(self.project, self.task, "next", engine="fake")
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.submit("fail")
+        await self.manager.submit("next", engine="fake")
+        await self.manager.wait_idle()
         first, second = self.manager.runs.list(self.task)
         self.assertEqual(first.status, RunStatus.FAILED)
         self.assertEqual(second.status, RunStatus.COMPLETED)
         self.assertEqual(self.store.get(first.assistant_message_id).content, "partial")
         self.assertEqual(self.manager.steps.list(first)[0].status, StepStatus.FAILED)
-        for path in self.project.paths.root.rglob("*.json*"):
-            self.assertNotIn("private-key", path.read_text(encoding="utf-8"))
+        self.assertEqual(first.error, "Authorization: private-key")
 
-    async def test_tool_failure_is_not_retried_or_leaked(self) -> None:
+    async def test_tool_failure_reports_diagnostics_without_retry(self) -> None:
         async def failing(arguments):
-            raise RuntimeError("secret-tool-password")
+            raise RuntimeError("tool failure detail")
         tool = Tool("add", "fail", self.tool.parameters, failing)
         completion_fn = ScriptedCompletion([chunk(calls=[call()], finish="tool_calls")])
         self.engine(completion_fn, tools=ToolRegistry((tool,)))
@@ -335,8 +334,7 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([step.status for step in self.manager.steps.list(run)],
                          [StepStatus.COMPLETED, StepStatus.FAILED])
         self.assertEqual(len(completion_fn.requests), 1)
-        for path in self.project.paths.root.rglob("*.json*"):
-            self.assertNotIn("secret-tool-password", path.read_text(encoding="utf-8"))
+        self.assertEqual(run.error, "tool failure detail")
 
     async def test_interrupt_during_blocked_read_preserves_queue_and_drops_late_delta(self) -> None:
         release = threading.Event()
@@ -350,11 +348,11 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 closed.set()
         self.engine(completion_fn)
-        await self.manager.submit(self.project, self.task, "first")
+        await self.manager.submit("first")
         await self.until(lambda: any(event.type == EngineEventType.TEXT_DELTA for event in self.events))
-        await self.manager.submit(self.project, self.task, "next", engine="fake")
-        self.assertTrue(await asyncio.wait_for(self.manager.interrupt(self.project, self.task), 1))
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.submit("next", engine="fake")
+        self.assertTrue(await asyncio.wait_for(self.manager.interrupt(), 1))
+        await self.manager.wait_idle()
         first, second = self.manager.runs.list(self.task)
         self.assertEqual(first.status, RunStatus.INTERRUPTED)
         self.assertEqual(second.status, RunStatus.COMPLETED)
@@ -380,9 +378,9 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
             release.wait(10)
             return LateStream()
         self.engine(completion_fn)
-        await self.manager.submit(self.project, self.task, "first")
+        await self.manager.submit("first")
         await self.until(entered.is_set)
-        await asyncio.wait_for(self.manager.interrupt(self.project, self.task), 1)
+        await asyncio.wait_for(self.manager.interrupt(), 1)
         self.assertEqual(self.run_status(), RunStatus.INTERRUPTED)
         release.set()
         await self.until(closed.is_set)
@@ -417,11 +415,11 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         tool = Tool("add", "blocking", self.tool.parameters, blocking)
         completion_fn = ScriptedCompletion([chunk(calls=[call()], finish="tool_calls")])
         self.engine(completion_fn, tools=ToolRegistry((tool,)))
-        await self.manager.submit(self.project, self.task, "first")
+        await self.manager.submit("first")
         await asyncio.wait_for(entered.wait(), 10)
-        await self.manager.submit(self.project, self.task, "next", engine="fake")
-        await self.manager.interrupt(self.project, self.task)
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.submit("next", engine="fake")
+        await self.manager.interrupt()
+        await self.manager.wait_idle()
         first, second = self.manager.runs.list(self.task)
         self.assertTrue(cancelled.is_set())
         self.assertEqual(first.status, RunStatus.INTERRUPTED)
@@ -479,13 +477,15 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         # The default observer asserts the primary Task's conversation only.
         self.manager.on_event = None
         other = self.tasks.create(self.project, "other")
-        await self.manager.submit(self.project, self.task, "first")
-        await self.manager.submit(self.project, other, "second")
+        other_manager = RunManager(self.tasks, self.registry, task=other, capabilities=self.components)
+        self.addAsyncCleanup(other_manager.shutdown)
+        await self.manager.submit("first")
+        await other_manager.submit("second")
         await self.until(lambda: len(entered) == 2)
         self.assertEqual(len(set(entered)), 2)
         release.set()
-        await asyncio.gather(self.manager.wait_idle(self.project, self.task),
-                             self.manager.wait_idle(self.project, other))
+        await asyncio.gather(self.manager.wait_idle(),
+                             other_manager.wait_idle())
         self.assertEqual(self.manager.runs.list(other)[0].status, RunStatus.COMPLETED)
         self.assertEqual(self.run_status(), RunStatus.COMPLETED)
 

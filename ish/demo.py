@@ -43,11 +43,11 @@ async def run_request(args: argparse.Namespace) -> int:
     engines.register("loop", LoopEngine(
         max_iterations=args.max_iterations, request_timeout=args.timeout,
     ))
-    manager = RunManager(tasks, engines, on_event=print_event, capabilities=components)
+    manager = RunManager(tasks, engines, task=task, on_event=print_event, capabilities=components)
     print(f"Project: {project.paths.root.resolve()}", file=sys.stderr)
     try:
-        await manager.submit(project, task, args.prompt)
-        await manager.wait_idle(project, task)
+        await manager.submit(args.prompt)
+        await manager.wait_idle()
         run = manager.runs.list(task)[0]
         print()
         if run.status != RunStatus.COMPLETED:

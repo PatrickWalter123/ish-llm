@@ -24,6 +24,7 @@ class ToolPaths:
 class ToolComponent(Component):
     name = "tools"
     directory = "tools"
+    capabilities = ("tools",)
 
     def __init__(self, catalog: ToolRegistry) -> None:
         self.catalog = catalog
@@ -37,22 +38,26 @@ class ToolComponent(Component):
         names = configuration["enabled"]
         if not isinstance(names, list) or any(not isinstance(name, str) for name in names):
             raise ValueError("Enabled tools must be a list of names")
-        self.catalog.select(tuple(names))  # validate before replacing configuration
+        if len(set(names)) != len(names):
+            raise ValueError("Duplicate enabled tool")
 
-    def _bind(self, identifier: str, data: dict) -> Tool:
-        handler = self.catalog.get(identifier).handler
+    @staticmethod
+    async def _unbound(arguments):
+        raise RuntimeError("Tool definition has no runtime handler")
+
+    def _definition(self, identifier: str, data: dict) -> Tool:
         function = data.get("function")
         if (data.get("type") != "function" or not isinstance(function, dict)
                 or function.get("name") != identifier
                 or not isinstance(function.get("parameters"), dict)
                 or not isinstance(function.get("description", ""), str)):
             raise ValueError("Expected a named function tool definition")
-        tool = Tool(identifier, function.get("description", ""), function["parameters"], handler, data)
+        tool = Tool(identifier, function.get("description", ""), function["parameters"], self._unbound, data)
         ToolRegistry((tool,))  # validate schema and native definition together
         return tool
 
     def validate_record(self, identifier: str, data: dict) -> None:
-        self._bind(identifier, data)
+        self._definition(identifier, data)
 
     def create(self, project: Project, data: dict, *, identifier: Optional[str] = None) -> str:
         if identifier is None and isinstance(data, dict) and isinstance(data.get("function"), dict):
@@ -74,9 +79,13 @@ class ToolComponent(Component):
                 # Existing enabled-name configurations use catalog definitions.
                 tool = self.catalog.get(name)
             else:
-                tool = self._bind(name, data)
+                definition = self._definition(name, data)
+                tool = Tool(name, definition.description, definition.parameters,
+                            self.catalog.get(name).handler, definition.definition)
             tools.register(tool)
         return tools
 
-    def exports(self, project: Project) -> dict:
-        return {"tools": self.resolve_tools(project)}
+    def resolve(self, project: Project, capability: str):
+        if capability != "tools":
+            return super().resolve(project, capability)
+        return self.resolve_tools(project)

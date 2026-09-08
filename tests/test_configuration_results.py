@@ -29,14 +29,19 @@ class ConfigurationResultTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.task = self.tasks.create(self.project, "Task")
         self.engines = EngineRegistry()
-        self.manager = RunManager(self.tasks, self.engines)
+        self.manager = RunManager(self.tasks, self.engines, task=self.task)
         self.addAsyncCleanup(self.manager.shutdown)
 
     async def submit(self, engine="loop", task=None):
         task = task or self.task
-        await self.manager.submit(self.project, task, "hello", engine=engine)
-        await asyncio.wait_for(self.manager.wait_idle(self.project, task), 15)
-        return self.manager.runs.list(task)[-1]
+        manager = self.manager if task.id == self.task.id else RunManager(self.tasks, self.engines, task=task)
+        try:
+            await manager.submit("hello", engine=engine)
+            await asyncio.wait_for(manager.wait_idle(), 15)
+            return manager.runs.list(task)[-1]
+        finally:
+            if manager is not self.manager:
+                await manager.shutdown()
 
     def usage_chunk(self, prompt=2, answer=3):
         return {"choices": [], "usage": {"prompt_tokens": prompt, "completion_tokens": answer,
@@ -131,7 +136,7 @@ class ConfigurationResultTests(unittest.IsolatedAsyncioTestCase):
             release.wait(5)
             yield chunk(finish="stop")
         self.engines.register("loop", LoopEngine(completion_fn=provider))
-        await self.manager.submit(self.project, self.task, "hello")
+        await self.manager.submit("hello")
         async def observed():
             while True:
                 runs = self.manager.runs.list(self.task)
@@ -139,8 +144,8 @@ class ConfigurationResultTests(unittest.IsolatedAsyncioTestCase):
                     return
                 await asyncio.sleep(0.005)
         await asyncio.wait_for(observed(), 10)
-        await self.manager.interrupt(self.project, self.task)
-        await self.manager.wait_idle(self.project, self.task)
+        await self.manager.interrupt()
+        await self.manager.wait_idle()
         run = self.manager.runs.list(self.task)[0]
         result = self.projects.results.load(self.project, run.id)
         self.assertEqual(result.status, RunStatus.INTERRUPTED)
@@ -159,9 +164,9 @@ class ConfigurationResultTests(unittest.IsolatedAsyncioTestCase):
         run.metadata["completions"][0]["status"] = RunStatus.RUNNING
         run.metadata["completions"][0]["usage_complete"] = False
         self.manager.runs.save(run)
-        other = RunManager(self.tasks, self.engines)
+        other = RunManager(self.tasks, self.engines, task=self.task)
         try:
-            await other.start(self.project, self.task)
+            await other.start()
             result = self.projects.results.load(self.project, run.id)
             self.assertEqual(result.status, RunStatus.INTERRUPTED)
             self.assertEqual(result.completions[0].status, RunStatus.INTERRUPTED)
@@ -264,19 +269,17 @@ class ConfigurationResultTests(unittest.IsolatedAsyncioTestCase):
         atomic_json(path, data)
         migrated = self.projects.load(self.project.id)
         self.assertEqual(migrated.config.completion, {"model": "old-model", "temperature": 0.1})
-        self.assertEqual(migrated.config.data["custom"], {"mode": "personal"})
+        self.assertEqual(migrated.config["custom"], {"mode": "personal"})
         self.projects.save(migrated)
-        self.assertNotIn("credential_ref", read_json(path)["config"])
+        self.assertEqual(read_json(path)["config"]["credential_ref"], "env:OLD")
 
     async def test_configuration_validation_runs_before_create_and_save(self):
-        for data in ({"bad": object()}, {1: "bad"}, {"n": float("nan")},
-                     {"nested": {"api_key": "do-not-save"}}):
+        for data in ({"bad": object()}, {1: "bad"}, {"n": float("nan")}):
             with self.subTest(data=data), self.assertRaises((TypeError, ValueError)):
                 ProjectConfig(data=data)
-        self.project.config.completion["api_key"] = "do-not-save"
-        with self.assertRaises(ValueError):
-            self.projects.save(self.project)
-        self.assertNotIn("do-not-save", (self.project.paths.root / "project.json").read_text())
+        self.project.config["custom_flag"] = True
+        self.projects.save(self.project)
+        self.assertTrue(self.projects.load(self.project.id).config["custom_flag"])
         self.task.config = {"engines": []}
         with self.assertRaises(TypeError):
             self.tasks.save(self.task)

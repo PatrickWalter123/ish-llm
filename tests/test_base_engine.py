@@ -25,11 +25,11 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
         self.project = self.projects.create("Simple", config=ProjectConfig(default_engine="simple"))
         self.task = self.tasks.create(self.project, "Task")
         self.engines = EngineRegistry()
-        self.manager = RunManager(self.tasks, self.engines)
+        self.manager = RunManager(self.tasks, self.engines, task=self.task)
         self.addAsyncCleanup(self.manager.shutdown)
 
     async def idle(self, task=None):
-        await asyncio.wait_for(self.manager.wait_idle(self.project, task or self.task), 10)
+        await asyncio.wait_for(self.manager.wait_idle(), 10)
 
     def context(self):
         run_id = new_id()
@@ -45,7 +45,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
                 ]})
         provider = ScriptedCompletion([chunk("Hello "), chunk("there", finish="stop")])
         self.engines.register("simple", Chat("Answer", kind="llm", completion_fn=provider))
-        await self.manager.submit(self.project, self.task, "hello")
+        await self.manager.submit("hello")
         await self.idle()
         run, = self.manager.runs.list(self.task)
         step, = self.manager.steps.list(run)
@@ -64,7 +64,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
                 yield ""
                 yield context.messages[-1].content
         self.engines.register("simple", Echo("Echo", kind="text"))
-        await self.manager.submit(self.project, self.task, "hello")
+        await self.manager.submit("hello")
         await self.idle()
         run, = self.manager.runs.list(self.task)
         step, = self.manager.steps.list(run)
@@ -81,7 +81,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
             context.state["secret"] = "private-action-value"
             seen.append(context.state)
         self.engines.register("simple", BaseEngine("Prepare", action=prepare))
-        await self.manager.submit(self.project, self.task, "hello")
+        await self.manager.submit("hello")
         await self.idle()
         run, = self.manager.runs.list(self.task)
         self.assertEqual(run.status, RunStatus.COMPLETED)
@@ -89,7 +89,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
         for path in self.project.paths.root.rglob("*.json*"):
             self.assertNotIn("private-action-value", path.read_text(encoding="utf-8"))
 
-    async def test_partial_failure_is_sanitized_closes_source_and_continues_queue(self):
+    async def test_partial_failure_keeps_diagnostics_closes_source_and_continues_queue(self):
         closed = []
         async def respond(context):
             try:
@@ -100,18 +100,17 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 closed.append(True)
         self.engines.register("simple", BaseEngine("Respond", action=respond))
-        await self.manager.submit(self.project, self.task, "bad")
-        await self.manager.submit(self.project, self.task, "good")
+        await self.manager.submit("bad")
+        await self.manager.submit("good")
         await self.idle()
         first, second = self.manager.runs.list(self.task)
         self.assertEqual(first.status, RunStatus.FAILED)
         self.assertEqual(second.status, RunStatus.COMPLETED)
-        self.assertEqual(self.manager.steps.list(first)[0].error, "Step execution failed")
+        self.assertEqual(self.manager.steps.list(first)[0].error, "Step execution failed: private-sdk-error")
         self.assertEqual(ConversationStore(self.task.paths.conversation).get(
             first.assistant_message_id).content, "partial")
         self.assertEqual(closed, [True, True])
-        for path in self.project.paths.root.rglob("*.json*"):
-            self.assertNotIn("private-sdk-error", path.read_text(encoding="utf-8"))
+        self.assertEqual(first.error, "private-sdk-error")
 
     async def test_interrupt_closes_stream_and_preserves_queued_request(self):
         entered, closed = asyncio.Event(), asyncio.Event()
@@ -124,10 +123,10 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 closed.set()
         self.engines.register("simple", BaseEngine("Respond", action=respond))
-        await self.manager.submit(self.project, self.task, "first")
+        await self.manager.submit("first")
         await asyncio.wait_for(entered.wait(), 5)
-        await self.manager.submit(self.project, self.task, "second")
-        self.assertTrue(await self.manager.interrupt(self.project, self.task))
+        await self.manager.submit("second")
+        self.assertTrue(await self.manager.interrupt())
         await self.idle()
         first, second = self.manager.runs.list(self.task)
         self.assertEqual(first.status, RunStatus.INTERRUPTED)
@@ -143,7 +142,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 closed.set()
         self.engines.register("simple", BaseEngine("Wait", action=action, timeout_seconds=0.02))
-        await self.manager.submit(self.project, self.task, "request")
+        await self.manager.submit("request")
         await self.idle()
         run, = self.manager.runs.list(self.task)
         self.assertEqual(run.status, RunStatus.FAILED)
@@ -165,11 +164,13 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
         metadata["labels"].append("external")
         self.engines.register("simple", engine)
         other = self.tasks.create(self.project, "Other")
-        await self.manager.submit(self.project, self.task, "one")
-        await self.manager.submit(self.project, other, "two")
+        other_manager = RunManager(self.tasks, self.engines, task=other)
+        self.addAsyncCleanup(other_manager.shutdown)
+        await self.manager.submit("one")
+        await other_manager.submit("two")
         await asyncio.wait_for(entered.wait(), 5)
         release.set()
-        await asyncio.gather(self.idle(), self.idle(other))
+        await asyncio.gather(self.idle(), other_manager.wait_idle())
         steps = [self.manager.steps.list(self.manager.runs.list(task)[0])[0]
                  for task in (self.task, other)]
         self.assertNotEqual(steps[0].id, steps[1].id)
@@ -209,7 +210,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
         for index, action in enumerate((wrong_generator, wrong_coroutine)):
             name = str(index)
             self.engines.register(name, BaseEngine(action=action))
-            await self.manager.submit(self.project, self.task, "request", engine=name)
+            await self.manager.submit("request", engine=name)
             await self.idle()
             run = self.manager.runs.list(self.task)[-1]
             self.assertEqual(run.status, RunStatus.FAILED)
@@ -235,7 +236,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
             async def aclose(self):
                 raise ValueError("private-close-error")
         events = []
-        with self.assertRaisesRegex(RuntimeError, "Step execution failed"):
+        with self.assertRaisesRegex(ValueError, "private-close-error"):
             async for event in BaseEngine(action=lambda context: BadClose()).execute(self.context()):
                 events.append(event)
         self.assertEqual(events[-1].type, EngineEventType.STEP_FAILED)
@@ -261,7 +262,7 @@ class BaseEngineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unimplemented_operation_is_a_failed_step(self):
         events = []
-        with self.assertRaisesRegex(RuntimeError, "Step execution failed"):
+        with self.assertRaisesRegex(NotImplementedError, "Implement run"):
             async for event in BaseEngine().execute(self.context()):
                 events.append(event)
         self.assertEqual([event.type for event in events],

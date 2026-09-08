@@ -33,10 +33,10 @@ async def main():
             if event.type == EngineEventType.TEXT_DELTA:
                 print(event.text, end="", flush=True)
 
-        manager = RunManager(tasks, engines, on_event=display)
+        manager = RunManager(tasks, engines, task=task, on_event=display)
         try:
-            await manager.submit(project, task, "hello")
-            await manager.wait_idle(project, task)
+            await manager.submit("hello")
+            await manager.wait_idle()
             print()
         finally:
             await manager.shutdown()

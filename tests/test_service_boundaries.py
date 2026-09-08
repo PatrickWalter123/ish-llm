@@ -45,8 +45,8 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.engines = EngineRegistry()
         self.engines.register("fake", FakeStreamingEngine())
 
-    def manager(self, **kwargs):
-        manager = RunManager(self.tasks, self.engines, **kwargs)
+    def manager(self, task=None, **kwargs):
+        manager = RunManager(self.tasks, self.engines, task=task or self.task, **kwargs)
         self.addAsyncCleanup(manager.shutdown)
         return manager
 
@@ -67,9 +67,9 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
                 operation()
         manager = self.manager()
         with self.assertRaises(ValueError):
-            await manager.start(stale, self.task)
+            await manager.start()
         with self.assertRaises(ValueError):
-            await manager.submit(stale, self.task, "rejected")
+            await manager.submit("rejected")
         self.assertFalse(self.task.paths.conversation.exists())
         self.assertEqual(manager.repository.list(self.task), [])
 
@@ -114,7 +114,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_idle_attached_task_cannot_be_overwritten_by_public_save(self):
         manager = self.manager()
-        await manager.start(self.project, self.task)
+        await manager.start()
         self.task.title = "stale edit"
         with self.assertRaises(ValueError):
             self.tasks.save(self.task)
@@ -128,16 +128,16 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         forged_task = deepcopy(self.task)
         forged_task.paths = TaskPaths(self.root / "outside")
         with self.assertRaises(ValueError):
-            await self.manager().submit(self.project, forged_task, "invalid")
+            await self.manager(task=forged_task).submit("invalid")
         self.assertFalse((self.root / "outside").exists())
 
     async def test_observer_errors_do_not_fail_execution_or_drop_queued_requests(self):
         def broken(run, event):
             raise RuntimeError("private display error")
         manager = self.manager(on_event=broken)
-        await manager.submit(self.project, self.task, "one")
-        await manager.submit(self.project, self.task, "two")
-        await manager.wait_idle(self.project, self.task)
+        await manager.submit("one")
+        await manager.submit("two")
+        await manager.wait_idle()
         runs = manager.repository.list(self.task)
         self.assertEqual([run.status for run in runs], [RunStatus.COMPLETED, RunStatus.COMPLETED])
         for run in runs:
@@ -184,8 +184,8 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         self.projects.set_components(self.project, ("tools",))
         path = ToolPaths.for_project(self.project).configuration
         before = path.read_bytes()
-        for config in ({"enabled": ["unknown"]}, {"enabled": "add"},
-                       {"enabled": ["add", "add"]}, {"enabled": ["add"], "api_key": "bad"}):
+        for config in ({"enabled": "add"},
+                       {"enabled": ["add", "add"]}):
             with self.assertRaises(ValueError):
                 self.projects.configure_component(self.project, "tools", config)
         self.assertEqual(path.read_bytes(), before)
@@ -247,9 +247,9 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         completion = Mock(side_effect=AssertionError("must not call provider"))
         self.engines.register("loop", LoopEngine(completion_fn=completion))
         manager = self.manager()  # no capability resolver registered in this process
-        await manager.submit(self.project, self.task, "test", engine="loop")
-        await manager.wait_idle(self.project, self.task)
-        self.assertEqual(manager.repository.list(self.task)[0].status, RunStatus.FAILED)
+        with self.assertRaises(ValueError):
+            await manager.submit("test", engine="loop")
+        self.assertEqual(manager.repository.list(self.task), [])
         completion.assert_not_called()
 
     async def test_two_projects_share_loop_engine_but_not_enabled_tools(self):
@@ -270,9 +270,10 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
             yield {"choices": [{"index": 0, "delta": delta, "finish_reason": reason}]}
         self.engines.register("loop", LoopEngine(completion_fn=completion))
         manager = self.manager(capabilities=self.components)
-        await manager.submit(self.project, self.task, "allowed", engine="loop")
-        await manager.submit(other, other_task, "denied", engine="loop")
-        await asyncio.gather(manager.wait_idle(self.project, self.task), manager.wait_idle(other, other_task))
+        await manager.submit("allowed", engine="loop")
+        other_manager = self.manager(task=other_task, capabilities=self.components)
+        await other_manager.submit("denied", engine="loop")
+        await asyncio.gather(manager.wait_idle(), other_manager.wait_idle())
         self.assertEqual(self.calls, [{}])
         self.assertEqual(manager.repository.list(self.task)[0].status, RunStatus.COMPLETED)
         self.assertEqual(manager.repository.list(other_task)[0].status, RunStatus.FAILED)
@@ -292,12 +293,12 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
                 yield EngineEvent(EngineEventType.TEXT_DELTA, text="done")
         self.engines.register("inspect", Inspect())
         manager = self.manager(capabilities=self.components)
-        await manager.submit(self.project, self.task, "one", engine="inspect")
+        await manager.submit("one", engine="inspect")
         await asyncio.wait_for(entered.wait(), 5)
         self.projects.configure_component(self.project, "tools", {"enabled": []})
-        await manager.submit(self.project, self.task, "two", engine="inspect")
+        await manager.submit("two", engine="inspect")
         release.set()
-        await manager.wait_idle(self.project, self.task)
+        await manager.wait_idle()
         self.assertEqual(seen, [("add",), ("add",), (), ()])
 
     async def test_factory_and_context_builder_are_shared_by_runtime_and_clone(self):
@@ -307,10 +308,10 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         projects = ProjectManager(ProjectRepository(self.root / "injected"), tasks)
         project = projects.create("Injected", config=ProjectConfig(default_engine="fake"))
         task = tasks.create(project, "Injected")
-        manager = RunManager(tasks, self.engines)
+        manager = RunManager(tasks, self.engines, task=task)
         self.addAsyncCleanup(manager.shutdown)
-        await manager.submit(project, task, "one")
-        await manager.wait_idle(project, task)
+        await manager.submit("one")
+        await manager.wait_idle()
         await manager.shutdown()
         clone = tasks.clone(task, project)
         self.assertTrue((clone.paths.root / "custom.jsonl").exists())
@@ -323,9 +324,9 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_new_runs_use_saved_project_configuration_instead_of_stale_handle(self):
         manager = self.manager()
         stale = deepcopy(self.project)
-        await manager.start(stale, self.task)
+        await manager.start()
         self.project.config.completion["model"] = "updated"
         self.projects.save(self.project)
-        await manager.submit(stale, self.task, "test")
-        await manager.wait_idle(stale, self.task)
+        await manager.submit("test")
+        await manager.wait_idle()
         self.assertEqual(self.engines.resolve("fake").contexts[0].project.config.completion["model"], "updated")

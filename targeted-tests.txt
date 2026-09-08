@@ -1,0 +1,49 @@
+Executing <Task pending name='Task-316' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C0472B88B0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.172 seconds
+Executing <Task pending name='Task-319' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001C0471E1CD0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.203 seconds
+Executing <Task pending name='Task-319' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C04723FB20>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.391 seconds
+Executing <Task pending name='Task-356' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C0471E1CD0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.234 seconds
+Executing <Task pending name='Task-415' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C0472C97F0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.172 seconds
+Executing <Task pending name='Task-738' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C04744A6A0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.110 seconds
+Executing <Task pending name='Task-765' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001C047455130>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.109 seconds
+Executing <Task pending name='Task-765' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C04666C8E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.156 seconds
+Executing <Task pending name='Task-908' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001C04746B040>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.141 seconds
+Executing <Task pending name='Task-1317' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001C0472EA280>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.235 seconds
+Executing <Task pending name='Task-1317' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C046E9FCA0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+Executing <Task pending name='Task-1600' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C0472BB0A0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.375 seconds
+Executing <Task pending name='Task-1603' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C0474288E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+Executing <Task pending name='Task-1606' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C0472485E0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+Executing <Task pending name='Task-1620' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C047248FD0>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.188 seconds
+Executing <Task pending name='Task-1623' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:95> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x000001C047219280>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.125 seconds
+Executing <Task pending name='Task-1749' coro=<IsolatedAsyncioTestCase._asyncioLoopRunner() running at D:\Program Files\Python39\lib\unittest\async_case.py:101> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at D:\Program Files\Python39\lib\asyncio\tasks.py:907, <TaskWakeupMethWrapper object at 0x000001C047468400>()] created at D:\Program Files\Python39\lib\asyncio\base_events.py:429> created at D:\Program Files\Python39\lib\unittest\async_case.py:117> took 0.141 seconds
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content=None, rol...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+D:\WorkSpace\ish\.venv39\lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected 10 fields but got 5: Expected `Message` - serialized value may not be as expected [field_name='message', input_value=Message(content='The resu...er_specific_fields=None), input_type=Message])
+  PydanticSerializationUnexpectedValue(Expected `StreamingChoices` - serialized value may not be as expected [field_name='choices', input_value=Choices(finish_reason='st...r_specific_fields=None)), input_type=Choices])
+  return self.__pydantic_serializer__.to_python(
+======================================================================
+ERROR: test_unimplemented_operation_is_a_failed_step (tests.test_base_engine.BaseEngineTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 64, in _callTestMethod
+    self._callMaybeAsync(method)
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 87, in _callMaybeAsync
+    return self._asyncioTestLoop.run_until_complete(fut)
+  File "D:\Program Files\Python39\lib\asyncio\base_events.py", line 647, in run_until_complete
+    return future.result()
+  File "D:\Program Files\Python39\lib\unittest\async_case.py", line 101, in _asyncioLoopRunner
+    ret = await awaitable
+  File "D:\WorkSpace\ish\tests\test_base_engine.py", line 266, in test_unimplemented_operation_is_a_failed_step
+    async for event in BaseEngine().execute(self.context()):
+  File "D:\WorkSpace\ish\ish\engines\base.py", line 324, in execute
+    operation = self.run(context)
+  File "D:\WorkSpace\ish\ish\engines\base.py", line 314, in run
+    raise NotImplementedError("Implement run(context) or provide action=")
+NotImplementedError: Implement run(context) or provide action=
+
+----------------------------------------------------------------------
+Ran 136 tests in 79.603s
+
+FAILED (errors=1)

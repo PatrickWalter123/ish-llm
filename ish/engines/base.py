@@ -64,9 +64,16 @@ class EngineRegistry:
         self._engines: dict[str, Engine] = {}
 
     def register(self, name: str, engine: Engine) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Engine name must be a nonempty string")
+        if not callable(getattr(engine, "execute", None)):
+            raise TypeError("Engine must implement execute(context)")
         if name in self._engines:
             raise ValueError(f"Engine already registered: {name}")
         self._engines[name] = engine
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(self._engines)
 
     def resolve(self, name: str) -> Engine:
         return self._engines[name]
@@ -350,9 +357,7 @@ class BaseEngine:
             # Never yield while being cancelled/closed. RunManager finalizes the
             # persisted active Step, including cancellation before run() starts.
             raise
-        except Exception:
-            # Raw SDK/action errors may contain credentials or response bodies.
-            yield EngineEvent(EngineEventType.STEP_FAILED, step_id=step_id,
-                              error=self.error_message)
-            raise RuntimeError(self.error_message) from None
+        except Exception as error:
+            yield EngineEvent(EngineEventType.STEP_FAILED, step_id=step_id, error=f"{self.error_message}: {error}")
+            raise
         yield EngineEvent(EngineEventType.STEP_COMPLETED, step_id=step_id)

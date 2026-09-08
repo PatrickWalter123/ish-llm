@@ -59,8 +59,8 @@ streaming, serial queues, concurrent Tasks, cancellation, engine failures,
 shutdown, recovery after an abruptly terminated subprocess, and lifecycle
 operations.
 
-Latest verification: all 191 tests passed on both Python 3.9.13 (128.472 seconds,
-LiteLLM 1.80.17) and Python 3.13.7 (116.750 seconds, LiteLLM 1.100.0). Both SDK
+Latest verification: all 204 tests passed on both Python 3.9.13 (168.825 seconds,
+LiteLLM 1.80.17) and Python 3.13.7 (152.722 seconds, LiteLLM 1.100.0). Both SDK
 versions passed the actual SDK/mock SSE test. These results cover the installed
 interpreters; Python 3.9.25 was not separately executed. The test outputs are
 `test-results-python39.txt` and `test-results-python313.txt`.
@@ -93,13 +93,12 @@ engines.register("loop", LoopEngine(
     system_prompt="Answer accurately and concisely.",
 ))
 # Select "loop" through ProjectConfig.default_engine, Task.default_engine,
-# or await manager.submit(project, task, content, engine="loop").
+# or await manager.submit(content, engine="loop").
 ```
 
 ProjectConfig.completion stores JSON-compatible LiteLLM defaults, including
 model, temperature, api_base and provider-specific options. Authentication uses
-the provider SDK environment or runtime-only completion_kwargs. There is no
-application credential resolver. Do not put API keys in persisted settings or URLs.
+the provider SDK environment or runtime-only completion_kwargs. There is no application credential resolver or field-name blocking.
 
 LoopEngine calls `litellm.completion` with `stream=True`; timeout and
 `num_retries=0` are defaults that completion_kwargs can override. It forwards content deltas immediately, assembles indexed
@@ -124,8 +123,8 @@ without a new dataclass field; unsupported values are reported by LiteLLM.
 Runtime SDK clients and callbacks are supported and retained by reference. Plain
 dict/list/tuple containers are copied at configuration/snapshot/request boundaries.
 These runtime parameters are not serialized to Project/Run metadata or service
-logs. Supply credentials through the SDK environment or runtime-only api_key;
-persisted settings reject common credential fields.
+logs. SDK environment and completion arguments remain available for provider options;
+there is no application key-name filter or masking.
 
 Application limits are direct keyword arguments: `max_iterations=8`,
 `request_timeout=60.0`, `tool_timeout=30.0`, `buffer_size=8`, `max_tool_calls=16`,
@@ -160,14 +159,19 @@ task = tasks.create(project, "Research", config={
 ```
 
 Project settings live in project.json; Task overrides live in task.json.config.
-The four dictionaries accept nested JSON data without new dataclass fields.
+ProjectConfig is a dict subclass, not a dataclass. Add arbitrary top-level keys with
+`config["editor"] = {"font_size": 14}` or constructor kwargs. Existing attribute
+shortcuts such as config.completion remain available; use mapping syntax for keys
+that collide with dict methods. to_dict()/serialize()/deserialize() round-trip all
+JSON fields. JSON type/finite-number checks remain, with no field-name blacklist.
 Call projects.save(project) or tasks.save(task) after editing. Task saves require
 a detached runtime as before. task_defaults is copied when a new Task is created;
 changing it later does not rewrite existing Tasks. Clones copy configuration,
 with independent containers, and start without execution history.
 
 Every Engine receives the full Project/Task snapshots and can call
-`context.settings("engine-name")` to get isolated completion/engine/data sections.
+`context.settings("engine-name")` to get isolated settings, including arbitrary
+workspace/Task keys and the selected engine section.
 Nested Project and Task dictionaries merge recursively; lists/scalars replace.
 Loop reads the "loop" section even inside a pipeline or under a registry alias.
 Its explicit constructor limits, completion_kwargs and system_prompt override
@@ -176,15 +180,16 @@ defaults. Runtime completion_kwargs replaces supplied argument values at the top
 level, retaining client/callback identities. Project changes are reloaded before
 the next Run; they do not alter an active Run's context.
 
-Old project.json model/temperature/api_base fields migrate into completion on
-load. Unknown old fields move into data. The former credential reference is
-ignored and removed on next save; use the provider's standard environment names.
+Legacy project.json files without a completion section migrate flat
+model/temperature/api_base into completion on load. New-format files retain
+identically named top-level application keys unchanged. Unknown fields stay at their original top-level location; no special keys
+are removed. Existing nested data remains nested.
 Old Task files without config load with an empty override. Python callers use the
-new ProjectConfig constructor; old flat keyword arguments were removed.
+open ProjectConfig mapping; completion options should be placed under completion.
 
 ```python
-await manager.submit(project, task, "Explain the design")
-await manager.wait_idle(project, task)
+await manager.submit("Explain the design")
+await manager.wait_idle()
 
 result = projects.results.list(project)[-1]  # ExecutionResult
 print(result.run_id, result.engine, result.status)
@@ -316,7 +321,7 @@ class EchoEngine(BaseEngine):
         yield context.messages[-1].content
 
 engines.register("echo", EchoEngine("Echo response", kind="text"))
-await manager.submit(project, task, "hello", engine="echo")
+await manager.submit("hello", engine="echo")
 ```
 
 A complete offline example with service setup is `examples/custom_engine.py`:
@@ -398,7 +403,7 @@ Migration: import `BaseEngine` from `ish.engines` or `ish.engines.base` instead 
 `StepEngine`/`ish.engines.step`. The old module, `_completion.py`, `LoopOptions`,
 `LoopEngineError`, `_Turn`, and `_ToolCall` are removed. LoopEngine is a single
 BaseEngine subclass with direct constructor options. Validation raises standard
-ValueError/TypeError; execution failures retain sanitized Step errors and
+ValueError/TypeError; execution failures retain Step error details and
 RuntimeError through the common lifecycle. Existing event/persistence formats and
 RunManager ownership are unchanged.
 
@@ -436,7 +441,7 @@ engines.register("prepared_loop", PipelineEngine(stages=[
 ]))
 
 # The caller creates instructions.txt in the Project before submitting.
-await manager.submit(project, task, "Help with this workspace", engine="prepared_loop")
+await manager.submit("Help with this workspace", engine="prepared_loop")
 ```
 
 PreparationStep defaults to a 60-second timeout; set timeout_seconds explicitly
@@ -501,10 +506,10 @@ async def main() -> None:
     task = tasks.create(project, "Conversation")
     engines = EngineRegistry()
     engines.register("loop", LoopEngine())
-    manager = RunManager(tasks, engines)
+    manager = RunManager(tasks, engines, task=task)
     try:
-        await manager.submit(project, task, "Hello")
-        await manager.wait_idle(project, task)
+        await manager.submit("Hello")
+        await manager.wait_idle()
         for message in ConversationStore(task.paths.conversation).list():
             print(message.role, message.status, message.content)
     finally:
@@ -515,7 +520,7 @@ asyncio.run(main())
 ```
 
 On restart, load the Project and Task through their managers, then call
-`await manager.start(project, task)`. This interrupts stale state and restores
+`await manager.start()`. This interrupts stale state and restores
 only queued requests. Calling `start` again on an already attached Task is safe.
 
 Project, Task, Run, and Step metadata each use a Repository/Manager pair in
@@ -531,7 +536,7 @@ from ish.services.runs import RunManager, RunRepository
 tasks = TaskManager(repository=TaskRepository())
 projects = ProjectManager(ProjectRepository(Path("./workspace/projects")), tasks)
 steps = StepManager(repository=StepRepository())
-manager = RunManager(tasks, engines, repository=RunRepository(), steps=steps)
+manager = RunManager(tasks, engines, task=task, repository=RunRepository(), steps=steps)
 ```
 
 Service modules are grouped by responsibility. Conversation context now uses
@@ -539,7 +544,7 @@ Service modules are grouped by responsibility. Conversation context now uses
 `remove_owned_tree` are in `ish.services.storage`; `RunEventPublisher` is a separate
 class in `ish.services.runs`. The old conversation_context.py, io.py, deletion.py,
 and events.py import paths were removed. Domain managers/repositories, access,
-locking, logging, and secrets retain their own modules. See the service module
+locking and logging retain their own modules. See the service module
 table in `docs/architecture.md` for the complete layout.
 
 RunManager is now imported from `ish.services.runs`; `ish.services.run_manager`
@@ -574,7 +579,7 @@ from ish.services.storage import StorageIO
 storage = StorageIO(projects.ownership)
 project = await storage.run(projects.create, "My project")
 task = await storage.run(tasks.create, project, "My task")
-await manager.submit(project, task, "Hello")
+await manager.submit("Hello")
 ```
 
 Injected synchronous storage/context/capability adapters run on worker threads
@@ -632,10 +637,10 @@ projects.configure_component(project, "tools", {"enabled": ["add"]})
 task = tasks.create(project, "Conversation")
 engines = EngineRegistry()
 engines.register("loop", LoopEngine())
-manager = RunManager(tasks, engines, capabilities=components)
+manager = RunManager(tasks, engines, task=task, capabilities=components)
 ```
 
-Call `await manager.submit(project, task, text)` from an async UI handler.
+Call `await manager.submit(text)` from an async UI handler.
 Pass the same configured component registry to ProjectManager and RunManager.
 Registered components are available to select; they are not automatically enabled.
 `create(..., components=())` creates no tool/workflow directories. Selecting tools
@@ -718,13 +723,14 @@ publishes disabled selection first; an I/O failure can leave partial data for re
 `projects.component` returns a locked handle that rechecks Project state/selection
 on every call. In async UI code, use `StorageIO(projects.ownership).run` for its
 synchronous CRUD. Direct component methods require a workspace ownership scope.
-JSON must have string keys and JSON-compatible values; keep credentials and live
-SDK objects in runtime arguments. Subagent/graph definitions are data only; they
+JSON must have string keys and JSON-compatible values; live SDK objects remain
+runtime-only. There is no application key-name filter. Subagent/graph definitions are data only; they
 are not automatically executed or interpreted as a fixed graph schema.
 
 ToolComponent additionally stores native function-tool definitions in
 `tools/records/<tool-name>.json`. Create one with the usual LiteLLM `type/function`
-dict; its name must match a registered handler. Extra provider keys such as
+dict. Reading, editing and cloning definitions needs no registered handler;
+execution binds the same name to an application handler. Extra provider keys such as
 `function.strict` survive persistence and appear in the LoopEngine tools argument.
 The enabled list still controls availability. Disable a tool before deleting its
 override. Existing enabled-name-only configuration keeps working.
@@ -732,8 +738,9 @@ override. Existing enabled-name-only configuration keeps working.
 RunManager still accepts `capabilities=components`. Tool-specific resolution now
 lives in `ish.components.tools.resolver.ComponentToolResolver`; for direct access,
 use `ComponentToolResolver(components).resolve_tools(project)`. Generic components
-can optionally export other capabilities through `exports(project)` and
-`components.resolve(project, capability_name)`.
+declare `capabilities = ("retriever",)` and implement
+`resolve(project, capability_name)`. The registry calls only components declaring
+the requested capability, and each component builds only that requested value.
 See [component API and persistence details](ish/components/README.md).
 
 TaskManager is bound to authoritative ProjectAccess when constructed with
@@ -742,6 +749,57 @@ ConversationStore creation is injectable through `conversations=`, and
 ConversationContextBuilder centralizes Run context and clone ordering. RunManager
 defaults to the same factory/builder as TaskManager. For UI-to-storage separation,
 configure these services once in the application's composition code.
+
+## Task-bound execution and Run notifications
+
+Each RunManager requires one Task at construction. Share ProjectRepository,
+TaskManager and registries across managers to retain workspace coordination;
+create a separate RunManager for each Task. A manager cannot switch Tasks.
+
+```python
+from ish.services.runs import RunManager, RunRequestError
+
+# task was created with tasks.create(project, "Conversation").
+def on_run_event(event):
+    print(event.type, event.run.id, event.run.status, event.run.error_code)
+
+manager = RunManager(tasks, engines, task=task,
+                     capabilities=components, on_run_event=on_run_event)
+try:
+    await manager.submit("Explain this workspace", engine="loop")
+    await manager.wait_idle()
+except RunRequestError as error:
+    print(error.code, str(error))
+finally:
+    await manager.shutdown()
+```
+
+`start()`, `submit(text)`, `wait_idle()`, `interrupt()` and `shutdown()` operate on
+that bound Task; the old Project/Task positional arguments are removed.
+shutdown interrupts only that Task, preserves its queued messages, drains writes
+and releases its attachment. Other managers continue. Create a new manager for
+the same Task and call start() to recover/resume queued requests after shutdown.
+
+Missing Engine or component registrations raise RunRequestError **before queue
+admission**, without creating messages/Runs or attaching a worker. Accepted input
+is still fsynced as QUEUED before runtime scheduling. Restored queued requests
+whose Engine is no longer registered become failed Runs without an Engine call.
+
+`on_event(run, engine_event)` remains the streaming/Step observer. The separate
+`on_run_event(event)` observes STARTED, COMPLETED, FAILED and INTERRUPTED, after
+the corresponding durable state writes. Callbacks run synchronously on the event
+loop, receive detached snapshots, and cannot fail execution by raising. Recovery
+also emits INTERRUPTED for newly recovered stale Runs. These are in-process
+notifications, not a durable event-subscription log; query Runs after reconnect.
+
+Run.error_code contains a stable machine-readable string: engine_not_registered,
+component_not_registered (request rejection), capability_failed, engine_failed,
+interrupted or process_restart. Run.error contains the exception detail for a
+failed execution; there is no exception-message masking. Error/code are also in
+ExecutionResult query views. wait_idle means the queue drained, not that every Run
+succeeded: use the terminal notification or query the Run status. Storage failure
+that prevents finalization propagates through wait_idle/shutdown; no terminal
+notification is emitted before a successful terminal save.
 
 ## Delete and restore
 
@@ -782,9 +840,9 @@ respective domains. Model observations use the existing Run persistence path and
 Run logs. SDK authentication and diagnostics are managed by the provider library.
 
 Only event names, IDs, statuses, counts, and deletion flags are recorded;
-prompts, answers, titles, arbitrary metadata, references, and secret values are
+prompts, answers, titles, arbitrary metadata and references are
 excluded. Log files are separate from durable conversation JSONL. Handlers are
-closed after writes, and log I/O failures emit a sanitized warning. Operational
+closed after writes, and log I/O failures emit an operational warning. Operational
 logs are best effort, not a transactional audit log. Permanent Task deletion
 leaves its final deletion record in Project logs; permanent Project deletion
 leaves it in the projects root's `logs/service.log`.

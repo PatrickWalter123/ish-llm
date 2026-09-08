@@ -1,6 +1,6 @@
 # Production readiness assessment
 
-Assessed 2026-09-08 after generic Project component storage and runtime Tool adapter separation.
+Updated 2026-09-09 after Task-bound Run managers, lifecycle notifications and open configuration.
 
 ## Decision
 
@@ -26,8 +26,9 @@ Python 3.13.7 / LiteLLM 1.100.0:
 .\.venv39\Scripts\python.exe -m ish.demo --help
 ```
 
-All 191 tests passed on Python 3.9.13 in 128.472 seconds and on Python 3.13.7 in
-116.750 seconds. Compilation of ish/tests/examples and the offline custom Engine
+All 204 tests passed on Python 3.9.13 in 168.825 seconds and on Python 3.13.7 in
+152.722 seconds. Additional focused checks passed for dict/dataclass serialization
+and legacy/current configuration round trips. Compilation of ish/tests/examples and the offline custom Engine
 example passed on both. Dependency consistency and demo import/argument parsing
 passed during the preceding validation. Full suite outputs are `test-results-python39.txt` and
 `test-results-python313.txt` at the repository root. Tests use temporary directories and
@@ -66,14 +67,14 @@ are not sustained-throughput or deployment latency guarantees.
 | Permanent deletion | Complete preflight rejects linked/escaping paths, but validation and recursive removal are separate. Noncooperating writers can change the tree, and an I/O error can leave a partially removed tree. | Ownership is implemented; deletion journal/tombstone strategy and recovery tests for partial failures. Back up valuable data before using irreversible removal. |
 | Provider cancellation | Cancelling a Run stops delta delivery; Python cannot forcibly cancel a synchronous network read. Daemon cleanup threads survive until reads return/time out. | Verify each deployed provider's timeout behavior, bound outstanding cleanup work, and add long-running cancellation/resource tests. |
 | Tool safety and history | Project-specific enabled tool names now constrain each Run, including Projects sharing a LoopEngine. Registered Python handlers remain trusted and have no OS sandbox. Structured calls/results still exist only during the Run. | Durable structured conversation events, OS/resource permission policy and isolation, side-effect/idempotency tests. Never automatically replay stale Runs. |
-| Logs and secrets | Logs exclude conversation/credential content through allowlisted fields, but are best effort and share the data filesystem. Authentication uses the SDK environment or runtime-only arguments. | Decide on centralized logs/metrics, storage retention and access controls, alerting, and deployment credential handling. These service logs do not govern the provider SDK's own diagnostics. |
+| Operational logs | Logs use a lifecycle field schema and are best effort. Project/component settings have no key-name blacklist, and Run/Step error details are not masked. | Define deployment logging/retention and access policy. Application logs do not govern provider SDK diagnostics. |
 | Release validation | Python 3.9 runtime versions are captured in `constraints-python39.txt`; newer interpreters still use dependency ranges. Linux/live-provider verification was not performed. Backup, migrations, and schema version coordination are deferred. | Validate and maintain dependencies for each deployment target, Linux CI, supported-provider smoke tests, backup/restore and upgrade tests, operational runbooks. |
 
 ## Scope still planned
 
 LoopEngine, the common BaseEngine authoring API, and sequential
 PipelineEngine/PreparationStep are implemented. BaseEngine lifecycle events,
-sanitized errors, cancellation, timeout, iterator cleanup, and shared-instance
+error details, cancellation, timeout, iterator cleanup, and shared-instance
 isolation plus inherited completion/chunk handling are covered by 19 authoring
 tests. Fourteen configuration/result tests cover settings precedence, migration,
 recovery, clone/delete policy, usage aggregation, Task/Project queries, legacy

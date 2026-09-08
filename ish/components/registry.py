@@ -22,6 +22,11 @@ class ComponentRegistry:
         if directory in {"tasks", "logs", "state", "cache"} or any(
                 item.directory.lower() == directory for item in self._components.values()):
             raise ValueError("Component directory is reserved or already owned")
+        capabilities = component.capabilities
+        if (not isinstance(capabilities, tuple)
+                or any(not isinstance(name, str) or not name for name in capabilities)
+                or len(set(capabilities)) != len(capabilities)):
+            raise ValueError("Capabilities must be a tuple of distinct names")
         self._components[component.name] = component
 
     def get(self, name: str) -> ProjectComponent:
@@ -54,9 +59,9 @@ class ComponentRegistry:
         """Collect optional exports without knowing their domain or value types."""
         values = []
         for name in self.validate(project.components):
-            exports = self._components[name].exports(deepcopy(project))
-            if capability in exports:
-                values.append(exports[capability])
+            component = self._components[name]
+            if capability in component.capabilities:
+                values.append(component.resolve(deepcopy(project), capability))
         return tuple(values)
 
     def clone(self, source: Project, destination: Project) -> None:

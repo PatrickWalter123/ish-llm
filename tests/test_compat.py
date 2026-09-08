@@ -37,7 +37,7 @@ class CompatibilityTests(unittest.TestCase):
                     self.assertIs(enum(member.value), member)
 
     def test_public_model_type_hints_resolve_on_python39(self) -> None:
-        for model in (Project, ProjectConfig, Task, Message, Run, Step, TaskRuntime,
+        for model in (Project, Task, Message, Run, Step, TaskRuntime,
                       EngineEvent, EngineContext, CompletionResult, ExecutionResult):
             with self.subTest(model=model.__name__):
                 hints = get_type_hints(model)
@@ -56,10 +56,9 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(deepcopy(event), event)
         with self.assertRaises(FrozenInstanceError):
             event.text = "changed"
-        self.assertEqual(hasattr(config, "__dict__"), sys.version_info < (3, 10))
-        if sys.version_info < (3, 10):
-            config.runtime_only = object()
-            self.assertNotIn("runtime_only", record(config))
+        self.assertIsInstance(config, dict)
+        config.new_key = {"enabled": True}
+        self.assertEqual(config.to_dict()["new_key"], {"enabled": True})
 
     def test_junction_detection_for_normal_file_directory_and_missing_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

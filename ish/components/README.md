@@ -4,7 +4,7 @@ Components own Project-root directories and persistent definitions. They do not
 execute Runs. `Component` in `base.py` provides directory initialization/removal,
 open JSON serialization/deserialization, configuration, definition CRUD and clone.
 `ComponentRegistry` registers identities/directories and collects generic optional
-`exports`; neither module imports Tools or requires `resolve_tools`.
+capability resolution; neither module imports Tools or requires `resolve_tools`.
 
 | Package | Persisted data | Runtime responsibility |
 | --- | --- | --- |
@@ -59,8 +59,9 @@ Default persistence:
 Only selected components are initialized. Records are plain dicts, not fixed
 schema dataclasses; unknown keys survive load/save and clone. `serialize(dict)`
 returns JSON text and `deserialize(text)` returns a detached dict. Values must be
-JSON-safe, string-keyed and finite; runtime objects and common credential fields
-are rejected consistently with ProjectConfig. There is no automatic migration or
+JSON-safe, string-keyed and finite; runtime objects are rejected. Field names are
+unrestricted, including names used in schema definitions. ProjectConfig uses the
+same JSON compatibility checks without an application key-name blacklist. There is no automatic migration or
 schema-version field: components may add their own and override validation/codecs.
 `validate_configuration` and `validate_record` are optional semantic hooks.
 
@@ -124,23 +125,27 @@ tools.create({
         "parameters": {"type": "object", "properties": {}},
         "strict": True,
     },
-})  # Uses the function name as its record ID; register its handler first.
+})  # Uses the function name as its record ID; the handler is only needed for execution.
 tools.configure({"enabled": ["add"], "custom_policy": {"label": "example"}})
 ```
 
 Tool definitions preserve provider extension keys. Function identity and argument
-schema are validated, and handlers must exist in the application catalog. Missing
+schema are validated independently of the application catalog. CRUD, configuration
+and clone work with an empty catalog; handlers are required only for execution. Missing
 record overrides use the catalog definition, preserving old enabled-name files.
 Disable a tool before deleting its override. Saving JSON never imports code or
 creates a handler; startup must register handlers again.
 
-ToolComponent exports a fresh ToolRegistry under the `tools` capability key.
-`ComponentToolResolver` in tools/resolver.py collects and validates that export.
+ToolComponent declares capabilities = ("tools",) and resolves a fresh ToolRegistry
+only when tools is requested. ComponentToolResolver in tools/resolver.py collects
+and validates that result.
 RunManager still accepts `capabilities=components` and wraps it with this adapter;
 custom resolvers with resolve_tools continue to work. For direct resolution use
 `ComponentToolResolver(components).resolve_tools(project)` instead of the removed
 ComponentRegistry.resolve_tools API. Other capabilities use arbitrary keys and
-values through `components.resolve(project, "retriever")`; base exports is empty.
+values through `components.resolve(project, "retriever")`. Declare a tuple of
+capability names and implement resolve(project, capability); the registry skips
+components that do not declare the requested name. Base capabilities is empty.
 
 The EngineContext tool snapshot stays fixed for one Run. Definition/configuration
 edits affect later Runs. Engine subagent/graph execution and Steps remain inside

@@ -1,6 +1,5 @@
 from typing import Optional
 from copy import deepcopy
-from dataclasses import asdict
 from pathlib import Path
 from typing import Protocol
 
@@ -32,7 +31,7 @@ class ProjectRepository:
     def save(self, project: Project) -> None:
         project.config.validate()
         data = record(project)
-        data["config"] = asdict(project.config)
+        data["config"] = project.config.to_dict()
         atomic_json(project.paths.root / "project.json", data)
         log_event(project.paths.logs, "project.saved", entity_id=project.id)
 
